@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" android:compileSdkVersion="36" android:compileSdkVersionCodename="16" package="hun.mesh.carwithenhance" platformBuildVersionCode="36" platformBuildVersionName="16">
+    <application android:extractNativeLibs="false" android:icon="@drawable/carwith_wifi_icon" android:label="CarWith Enhance" android:roundIcon="@drawable/carwith_wifi_icon">
+        <meta-data android:name="xposedmodule" android:value="true"/>
+        <meta-data android:name="xposeddescription" android:value="CarWith增强模块 by Mesh_Hun · 稳定性优化版"/>
+        <meta-data android:name="xposedminversion" android:value="93"/>
+        <meta-data android:name="xposedscope" android:resource="@array/lsposed_scopes"/>
+        <receiver android:exported="true" android:name="hun.mesh.carwithenhance.hook.WakeReceiver">
+            <intent-filter>
+                <action android:name="hun.mesh.carwithenhance.action.WAKE"/>
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

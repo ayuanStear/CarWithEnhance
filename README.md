@@ -1,129 +1,116 @@
-# CarWith Enhance · 断开后延迟关闭音乐
+# CarWith Enhance
 
-基于 **CarWith Enhance 2.2.0（disconnect-kill-music）** 的二次修改版本。
+面向小米 CarWith 的 Xposed/LSPosed 功能增强模块。当前仓库提供可直接构建的 Java 源码，并保留早期 2.2.0 版本的 smali 补丁作为历史参考。
 
-把原有的「断开连接后关闭音乐」行为改成：
+当前源码版本：
 
-> **断开连接后延迟 N 秒再关闭音乐播放器；如果播放器在前台或正在播放，则跳过关闭。**
+- `versionCode`: 33
+- `versionName`: `2.3.2-kill-only`
 
-延迟秒数可在 CarWith 设置面板里手动输入（默认 5 秒，0 = 立即）。
+## 当前断连行为
 
----
+当「断开连接后关闭音乐」开关开启时：
 
-## 功能说明
+1. CarWith 检测到连接断开；
+2. 立即记录断连状态；
+3. 约 250 ms 后使用 `Process.killProcess(Process.myPid())` 结束 CarWith 自身进程；
+4. 模块在 system_server 中安排一次性 Handler 任务，到配置的延迟秒数后停止音乐目标；
+5. 一次性任务执行后清空 `Settings.Global` 中的临时命令。
 
-- **延迟关闭**：CarWith 断开后不再立即强杀音乐播放器，而是延迟指定秒数后再关闭。
-- **前台跳过**：如果目标播放器进程处于前台（`ActivityManager` 的 `IMPORTANCE_FOREGROUND`），跳过关闭。
-- **播放中跳过**：如果目标播放器正在播放（`MediaSession` 的 `PlaybackState.STATE_PLAYING`），跳过关闭。
-- **设置面板**：
-  - 保留原有「断开连接后关闭音乐」总开关。
-  - 新增「断开后延迟关闭秒数」输入框：
-    - 显示当前值（摘要 + 输入框回显）。
-    - 可手动输入，自动只保留数字（非数字会被去除，空输入按 0）。
-    - 总开关关闭时自动隐藏。
+不会对 `com.miui.carlink` 调用 `forceStopPackage`。force-stop 会把包标记为 `stopped=true`，导致 CarWith 官方蓝牙静态接收器无法在下次连接时被系统唤醒。
 
----
+## 官方蓝牙唤醒
 
-## 改动文件（smali 补丁）
+CarWith 官方 APK 已包含：
 
-以下为反编译后修改/新增的 smali 文件（已加注释）：
+- `com.miui.carlink.BluetoothReceiver`
+- `com.miui.carlink.castfwk.wireless.bt.BluetoothBroadcastReceiver`
 
-| 文件 | 说明 |
-| --- | --- |
-| `CarLinkStateHook.smali` | 断开入口改为延迟调度；新增 `doCloseMusicPlayers()` 实际关闭逻辑；新增桥接方法 `c` |
-| `CarLinkStateHook$3.smali` | 新增：延迟关闭用的 `Runnable` |
-| `AutoPlayAllHook.smali` | 新增 `isForeground()` 与 `shouldSkipDisconnectKill()` |
-| `SettingsHook.smali` | 新增静态字段 `sDelayPref` 与 `setDelayPrefVisible()` |
-| `SettingsHook$4.smali` | 设置面板新增「断开后延迟关闭秒数」输入框 |
-| `SettingsHook$4$1.smali` | 总开关变化时联动隐藏/显示延迟输入框 |
-| `SettingsHook$4$2.smali` | 新增：延迟输入框的 `OnPreferenceChangeListener`（数字过滤 + 存值 + 更新摘要） |
+其中 `BluetoothBroadcastReceiver` 监听：
 
-### 核心存储键
-
-- `hook_disconnect_kill_music_enabled`（布尔，总开关）
-- `hook_disconnect_kill_delay_sec`（整数，延迟秒数，默认 5）
-
----
-
-## 代码逻辑概述
-
-### 1. 延迟调度（`CarLinkStateHook.closeMusicPlayerIfNeeded()`）
-
-断开时读取总开关与延迟秒数，然后用 `Handler.postDelayed` 延迟执行真正关闭：
-
-```
-延迟 ms = hook_disconnect_kill_delay_sec * 1000
+```text
+miui.carlink.intent.action.bluetooth.connect.state.changed
 ```
 
-### 2. 真正关闭（`CarLinkStateHook.doCloseMusicPlayers()`）
+收到 `ACL_CONNECTED` 后，由官方代码执行自动连接/驾驶模式流程。本模块不重复注册蓝牙 ACL 唤醒逻辑，只保证断开时使用 kill-only 方式结束进程，不破坏官方接收器。
 
-遍历 `AutoPlayAllHook.collectDisconnectTargets()` 返回的播放器包名，逐个判断：
+## 配置键
 
+- `hook_disconnect_kill_music_enabled`：断连关闭音乐总开关
+- `hook_disconnect_kill_delay_sec`：音乐延迟关闭秒数，范围 `0..300`
+- `carwithenhance_disconnect_stop_at`：system_server 一次性任务时间戳
+- `carwithenhance_disconnect_targets`：待停止的音乐包名列表
+
+## 源码目录
+
+```text
+source/
+├─ app/
+│  ├─ libs/xposed-api-82.jar
+│  └─ src/main/
+│     ├─ AndroidManifest.xml
+│     ├─ assets/
+│     ├─ java/
+│     ├─ jniLibs/arm64-v8a/libdexkit.so
+│     └─ res/
+├─ gradle/wrapper/
+├─ build.gradle
+├─ settings.gradle
+├─ gradlew
+└─ gradlew.bat
 ```
-if (shouldSkipDisconnectKill(pkg))  -> 跳过
-else                                -> forceStop(pkg, "disconnect")
+
+关键实现：
+
+- `source/app/src/main/java/hun/mesh/carwithenhance/hook/CarLinkStateHook.java`
+- `source/app/src/main/java/hun/mesh/carwithenhance/hook/SystemServerHook.java`
+- `source/app/src/main/java/hun/mesh/carwithenhance/config/HookConfigs.java`
+
+## 构建
+
+需要 JDK 17、Android SDK 36。
+
+```powershell
+cd source
+.\gradlew.bat testDebugUnitTest assembleRelease
 ```
 
-### 3. 跳过判断（`AutoPlayAllHook.shouldSkipDisconnectKill()`）
+Release APK：
 
+```text
+source/app/build/outputs/apk/release/app-release.apk
 ```
-return isForeground(pkg) || isPlaying(pkg);
+
+如本机没有配置 `ANDROID_HOME`，请自行创建不提交的 `source/local.properties`：
+
+```properties
+sdk.dir=C:/path/to/Android/Sdk
 ```
 
-- `isForeground`：`ActivityManager.getRunningAppProcesses()` 中 `importance == IMPORTANCE_FOREGROUND(100)`。
-- `isPlaying`：`MediaSessionManager.getActiveSessions()` 中 `PlaybackState.getState() == STATE_PLAYING(3)`。
+## 安装
 
----
+```powershell
+adb push source/app/build/outputs/apk/release/app-release.apk /data/local/tmp/CarWithEnhance.apk
+adb shell su -c "pm install -r -d --user 0 /data/local/tmp/CarWithEnhance.apk"
+```
 
-## 如何重新打包
+安装后：
 
-> 需要：`apktool`、`uber-apk-signer`（或 `apksigner`）、Java。
+1. 在 LSPosed 中启用模块；
+2. 作用域勾选 `com.miui.carlink` 和 `android`；
+3. 重启手机，使 system_server Hook 生效。
 
-1. 准备原始 APK：`CarWithEnhance 2.2.0-disconnect-kill-music`。
-2. 反编译：
+## 历史 smali 补丁（2.2.0）
 
-   ```bash
-   java -jar apktool.jar d -f CarWithEnhance.apk -o decoded
-   ```
+根目录 `smali/` 保留早期版本针对 CarWith Enhance 2.2.0 的 smali 修改，包括：
 
-3. 用本仓库 `smali/` 下的文件覆盖 `decoded/smali*` 对应路径：
+- 延迟关闭音乐；
+- 延迟秒数设置项；
+- 前台或播放中跳过关闭；
+- 设置面板联动。
 
-   - `smali/hun/mesh/carwithenhance/hook/*`（除 `AutoPlayAllHook.smali`）
-   - `smali_classes2/hun/mesh/carwithenhance/hook/AutoPlayAllHook.smali`
+该目录仅作历史参考。当前推荐直接修改并构建 `source/` 下的 Java 工程。
 
-4. 重新打包：
+## 说明
 
-   ```bash
-   java -jar apktool.jar b decoded -o patched.apk
-   ```
-
-5. 签名（v1/v2/v3）：
-
-   ```bash
-   java -jar uber-apk-signer.jar -a patched.apk --allowResign
-   ```
-
-6. 安装到手机（需 LSPosed / root）：
-
-   ```bash
-   adb install -r patched-aligned-debugSigned.apk
-   # 或在 MIUI/HyperOS 被限制时：
-   # adb push patched-aligned-debugSigned.apk /data/local/tmp/app.apk
-   # adb shell su -c "pm install -r /data/local/tmp/app.apk"
-   ```
-
-7. 在 LSPosed 里启用模块并勾选作用域（`com.miui.carlink`、`系统框架/system`），重启生效。
-
----
-
-## 使用方法
-
-1. 打开 CarWith 手机端设置 → **CarWith Enhance** 分类。
-2. 「断开连接后关闭音乐」= 总开关（关闭后延迟输入框隐藏）。
-3. 「断开后延迟关闭秒数」= 手动输入延迟秒数（0 = 立即，默认 5）。
-
----
-
-## 免责声明
-
-本项目仅用于个人学习与自用手机（小米 CarWith）功能增强。原始模块 `CarWith Enhance` 由 `Mesh_Hun` 开发；本仓库仅基于其 2.2.0 版本做局部功能修改。
+本项目用于个人学习与自用设备功能增强。原始 CarWith Enhance 由 `Mesh_Hun` 开发；本仓库在其反编译源码基础上进行可构建化整理和功能调整。
