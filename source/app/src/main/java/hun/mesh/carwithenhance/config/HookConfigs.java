@@ -35,7 +35,8 @@ public final class HookConfigs {
     public static final HookItem DISCONNECT_KILL_MUSIC = new HookItem(
             "hook_disconnect_kill_music_enabled",
             "断开连接后关闭音乐",
-            "开启后，断开时立即结束 CarWith 进程，延迟到设定秒数后关闭当前音乐播放器；"
+            "开启后，断开时立即结束 CarWith 进程；延迟到设定秒数后关闭当前音乐播放器，"
+                    + "若音乐应用在前台或正在播放则跳过；"
                     + "下次蓝牙连接仍由 CarWith 官方接收器自动唤醒",
             true);
 

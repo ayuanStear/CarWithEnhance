@@ -6,6 +6,9 @@ import android.app.Application;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.database.ContentObserver;
+import android.media.session.MediaController;
+import android.media.session.MediaSessionManager;
+import android.media.session.PlaybackState;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
@@ -18,6 +21,7 @@ import hun.mesh.carwithenhance.utils.XLog;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -260,9 +264,18 @@ public class SystemServerHook {
                 if (targets != null && !targets.isEmpty()) {
                     for (String target : targets.split(",")) {
                         String packageName = target.trim();
-                        if (!packageName.isEmpty()) {
-                            forceStopMusicPackage(context, packageName);
+                        if (packageName.isEmpty()) {
+                            continue;
                         }
+                        if (isMusicForeground(context, packageName)) {
+                            XLog.i(">> [断连停止] 音乐应用在前台，跳过: " + packageName);
+                            continue;
+                        }
+                        if (isMusicPlaying(context, packageName)) {
+                            XLog.i(">> [断连停止] 音乐应用正在播放，跳过: " + packageName);
+                            continue;
+                        }
+                        forceStopMusicPackage(context, packageName);
                     }
                 }
                 clearDisconnectStopCommand(resolver);
@@ -280,6 +293,61 @@ public class SystemServerHook {
         } catch (Throwable th) {
             XLog.e(">> [断连停止] 清理一次性任务失败", th);
         }
+    }
+
+    private static boolean isMusicForeground(Context context, String packageName) {
+        try {
+            ActivityManager activityManager =
+                    (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+            if (activityManager == null) {
+                return false;
+            }
+            List<ActivityManager.RunningAppProcessInfo> processes =
+                    activityManager.getRunningAppProcesses();
+            if (processes == null) {
+                return false;
+            }
+            String packagePrefix = packageName + ":";
+            for (ActivityManager.RunningAppProcessInfo process : processes) {
+                if (process == null || process.processName == null) {
+                    continue;
+                }
+                if ((process.processName.equals(packageName)
+                        || process.processName.startsWith(packagePrefix))
+                        && process.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND) {
+                    return true;
+                }
+            }
+        } catch (Throwable th) {
+            XLog.e(">> [断连停止] 检查音乐应用前台状态失败: " + packageName, th);
+        }
+        return false;
+    }
+
+    private static boolean isMusicPlaying(Context context, String packageName) {
+        try {
+            MediaSessionManager mediaSessionManager =
+                    (MediaSessionManager) context.getSystemService(Context.MEDIA_SESSION_SERVICE);
+            if (mediaSessionManager == null) {
+                return false;
+            }
+            List<MediaController> sessions = mediaSessionManager.getActiveSessions(null);
+            if (sessions == null) {
+                return false;
+            }
+            for (MediaController controller : sessions) {
+                if (controller == null || !packageName.equals(controller.getPackageName())) {
+                    continue;
+                }
+                PlaybackState state = controller.getPlaybackState();
+                if (state != null && state.getState() == PlaybackState.STATE_PLAYING) {
+                    return true;
+                }
+            }
+        } catch (Throwable th) {
+            XLog.e(">> [断连停止] 检查音乐应用播放状态失败: " + packageName, th);
+        }
+        return false;
     }
 
     // 仅用于用户配置的音乐目标；CarWith 必须走自身 killProcess，避免被标记为 stopped。

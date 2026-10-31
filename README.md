@@ -4,8 +4,8 @@
 
 当前源码版本：
 
-- `versionCode`: 33
-- `versionName`: `2.3.2-kill-only`
+- `versionCode`: 34
+- `versionName`: `2.3.3-skip-active`
 
 ## 当前断连行为
 
@@ -14,8 +14,12 @@
 1. CarWith 检测到连接断开；
 2. 立即记录断连状态；
 3. 约 250 ms 后使用 `Process.killProcess(Process.myPid())` 结束 CarWith 自身进程；
-4. 模块在 system_server 中安排一次性 Handler 任务，到配置的延迟秒数后停止音乐目标；
-5. 一次性任务执行后清空 `Settings.Global` 中的临时命令。
+4. 模块在 system_server 中安排一次性 Handler 任务；
+5. 到达配置的延迟秒数后重新检查音乐应用状态：
+   - 处于前台：跳过；
+   - MediaSession 为 `STATE_PLAYING`：跳过；
+   - 其他情况：停止音乐目标；
+6. 一次性任务执行后清空 `Settings.Global` 中的临时命令。
 
 不会对 `com.miui.carlink` 调用 `forceStopPackage`。force-stop 会把包标记为 `stopped=true`，导致 CarWith 官方蓝牙静态接收器无法在下次连接时被系统唤醒。
 
@@ -38,6 +42,7 @@ miui.carlink.intent.action.bluetooth.connect.state.changed
 
 - `hook_disconnect_kill_music_enabled`：断连关闭音乐总开关
 - `hook_disconnect_kill_delay_sec`：音乐延迟关闭秒数，范围 `0..300`
+- 前台或播放中的音乐应用不会被停止
 - `carwithenhance_disconnect_stop_at`：system_server 一次性任务时间戳
 - `carwithenhance_disconnect_targets`：待停止的音乐包名列表
 
