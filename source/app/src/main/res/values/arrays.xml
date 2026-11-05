@@ -3,5 +3,6 @@
     <string-array name="lsposed_scopes">
         <item>com.miui.carlink</item>
         <item>android</item>
+        <item>com.tencent.qqmusic</item>
     </string-array>
 </resources>

@@ -781,7 +781,7 @@ public class AutoPlayAllHook implements IHook {
             return;
         }
         try {
-            if (str.length() != 0 && (context = sAppCtx) != null && isEnabled(context) && !blockedByUserKill(context, str) && !blockedBySwitchDrop(str) && !isProcessRunning(context, str) && isTarget(sCl, str)) {
+            if (str.length() != 0 && (context = sAppCtx) != null && isEnabled(context) && !blockedByUserKill(context, str) && !blockedBySwitchDrop(str) && !isProcessRunning(context, str) && isMediaApp(sCl, str)) {
                 log(context, str2 + " " + str + "，先把它后台唤醒");
                 CAR_OPEN_AT.put(str, Long.valueOf(SystemClock.elapsedRealtime()));
                 markSessionMedia(str);
@@ -814,7 +814,7 @@ public class AutoPlayAllHook implements IHook {
             return;
         }
         try {
-            if (str.length() == 0 || !isTarget(classLoader, str) || (objCallStaticMethod = XposedHelpers.callStaticMethod(XposedHelpers.findClass("xa.c", classLoader), "h", new Object[0])) == null) {
+            if (str.length() == 0 || !isMediaApp(classLoader, str) || (objCallStaticMethod = XposedHelpers.callStaticMethod(XposedHelpers.findClass("xa.c", classLoader), "h", new Object[0])) == null) {
                 return;
             }
             Object objectField = XposedHelpers.getObjectField(objCallStaticMethod, "d");
@@ -853,7 +853,7 @@ public class AutoPlayAllHook implements IHook {
 
     public static void onCarConnected() {
         sConnectGen++;
-        sSelectedApp = readPrefMediaApp();
+        sSelectedApp = readLastUsedMediaApp();
         SESSION_MEDIA.clear();
         WOKE.clear();
         sActiveWokePkg = null;
@@ -909,7 +909,7 @@ public class AutoPlayAllHook implements IHook {
             if (context != null && isEnabled(context) && (lastUsedMediaApp = readLastUsedMediaApp()) != null && lastUsedMediaApp.length() != 0 && isMediaApp(sCl, lastUsedMediaApp) && !isNeverKill(lastUsedMediaApp)) {
                 log(context, "本次连接待续播: " + lastUsedMediaApp + " (CarWith自带续播开关=" + readPrefAutoPlay() + ")");
                 learnCurrentMedia(lastUsedMediaApp);
-                if (!isProcessRunning(context, lastUsedMediaApp) && isTarget(sCl, lastUsedMediaApp)) {
+                if (!isProcessRunning(context, lastUsedMediaApp) && isMediaApp(sCl, lastUsedMediaApp)) {
                     log(context, "连接即唤醒上次使用的播放器: " + lastUsedMediaApp);
                     CAR_OPEN_AT.put(lastUsedMediaApp, Long.valueOf(SystemClock.elapsedRealtime()));
                     markSessionMedia(lastUsedMediaApp);
@@ -928,23 +928,26 @@ public class AutoPlayAllHook implements IHook {
     }
 
     private static String readLastUsedMediaApp() {
+        String official = carwithLastUsedMediaApp();
+        if (official == null || official.length() == 0) {
+            official = carwithCurrentMediaApp();
+        }
+        if (official != null && official.length() > 0 && isMediaApp(sCl, official)) {
+            return official;
+        }
         String strSelectedApp = selectedApp();
-        if (strSelectedApp != null && strSelectedApp.length() > 0) {
+        if (strSelectedApp != null && strSelectedApp.length() > 0 && isMediaApp(sCl, strSelectedApp)) {
             return strSelectedApp;
         }
-        try {
-            Object objCallMethod = XposedHelpers.callMethod(XposedHelpers.callStaticMethod(XposedHelpers.findClass("ma.a", sCl), "p", new Object[0]), "o", new Object[0]);
-            if ((objCallMethod instanceof String) && ((String) objCallMethod).length() > 0) {
-                return (String) objCallMethod;
-            }
-            return null;
-        } catch (Throwable th) {
-            return null;
+        String pref = readPrefMediaApp();
+        if (pref != null && pref.length() > 0 && isMediaApp(sCl, pref)) {
+            return pref;
         }
+        return null;
     }
 
     private static String selectedApp() {
-        if (isTarget(sCl, sSelectedApp)) {
+        if (sSelectedApp != null && sSelectedApp.length() > 0 && isMediaApp(sCl, sSelectedApp)) {
             return sSelectedApp;
         }
         return readPrefMediaApp();
@@ -1130,7 +1133,7 @@ public class AutoPlayAllHook implements IHook {
             sActiveWokePkg = null;
         }
         sCurrentMediaPkg = str;
-        if (QQ_MUSIC.equals(str) || isProcessRunning(context, str) || !isTarget(sCl, str)) {
+        if (QQ_MUSIC.equals(str) || isProcessRunning(context, str) || !isMediaApp(sCl, str)) {
             return;
         }
         log(context, "车机端切换到 " + str + "，先后台唤醒它");
@@ -2115,7 +2118,7 @@ public class AutoPlayAllHook implements IHook {
         }
         markSessionMedia(str);
         String strSelectedApp = selectedApp();
-        if (strSelectedApp != null && strSelectedApp.length() > 0 && !strSelectedApp.equals(str) && !isProcessRunning(appContext, str) && !hasSession(appContext, str) && isTarget(classLoader, strSelectedApp)) {
+        if (strSelectedApp != null && strSelectedApp.length() > 0 && !strSelectedApp.equals(str) && !isProcessRunning(appContext, str) && !hasSession(appContext, str) && isMediaApp(classLoader, strSelectedApp)) {
             log(appContext, "CarWith 请求的 " + str + " 已结束，改用当前选中的 " + strSelectedApp);
             str = strSelectedApp;
         }
@@ -2136,7 +2139,7 @@ public class AutoPlayAllHook implements IHook {
         } else {
             z = false;
         }
-        if (!isTarget(classLoader, str)) {
+        if (!isMediaApp(classLoader, str)) {
             log(appContext, str + " 不在续播名单内，不处理");
             return;
         }

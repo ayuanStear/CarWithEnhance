@@ -119,3 +119,13 @@ adb shell su -c "pm install -r -d --user 0 /data/local/tmp/CarWithEnhance.apk"
 ## 说明
 
 本项目用于个人学习与自用设备功能增强。原始 CarWith Enhance 由 `Mesh_Hun` 开发；本仓库在其反编译源码基础上进行可构建化整理和功能调整。
+
+## 上车续播与作用域（2026-11-06）
+
+- LSPosed 作用域增加 `com.tencent.qqmusic`，并在模块 `xposedscope` 中列为推荐应用。
+- 上车续播改为统一处理 QQ 音乐与其他音乐播放器，不再只续播 QQ 音乐。
+- 上车续播以 CarWith 自带的「上车自动续播」开关（`prefer_auto_play`）为准。
+- 每次上车续播优先打开 CarWith 官方上次记录的播放器（`xa.c` 使用记录 / `ma.a` 当前媒体应用），不再回到 `prefer_media_app` 默认播放器。
+- 播放过程中切换到其它音乐播放器时，自动结束上一个播放器。
+
+Release APK：`release/CarWithEnhance-2.3.3-skip-active.apk`

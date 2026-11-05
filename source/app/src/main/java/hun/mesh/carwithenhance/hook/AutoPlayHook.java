@@ -32,10 +32,9 @@ public class AutoPlayHook implements IHook {
                         try {
                             Context appContext = AppUtils.getAppContext(classLoader);
                             if (appContext != null) {
-                                SharedPreferences sharedPreferences = appContext.getSharedPreferences(HookConfigs.PREFS_FILE, 0);
-                                HookItem hookItem = HookConfigs.AUTOPLAY;
-                                if (!sharedPreferences.getBoolean(hookItem.key, hookItem.defaultValue)) {
-                                    XLog.i(">> [续播优化] QQ续播优化关闭，走默认逻辑");
+                                SharedPreferences sharedPreferences = appContext.getSharedPreferences("file_prefer_app_091703", 0);
+                                if (!sharedPreferences.getBoolean("prefer_auto_play", true)) {
+                                    XLog.i(">> [续播优化] CarWith 自带上车续播关闭，走默认逻辑");
                                     return invokeOriginalSafely(methodHookParam);
                                 }
                             }
