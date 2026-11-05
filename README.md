@@ -129,3 +129,9 @@ adb shell su -c "pm install -r -d --user 0 /data/local/tmp/CarWithEnhance.apk"
 - 播放过程中切换到其它音乐播放器时，自动结束上一个播放器。
 
 Release APK：`release/CarWithEnhance-2.3.3-skip-active.apk`
+
+## QQ 音乐定制页（2026-11-06）
+
+- QQ 音乐从应用列表菜单进入时也走 CarWith 1.0 定制页，与网易云一致。
+- 修复方式：拦截 y3.c.StartAppHelper 对 QQ 音乐的 embedding 启动，改走 UCarFragmentManager.jumpTo。
+
