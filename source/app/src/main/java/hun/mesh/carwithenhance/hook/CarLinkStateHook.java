@@ -135,24 +135,6 @@ public class CarLinkStateHook implements IHook {
         }
     }
 
-    private void syncKeepAliveConfig() {
-        Context context = this.mContext;
-        if (context == null) {
-            return;
-        }
-        try {
-            SharedPreferences preferences = context.getSharedPreferences(HookConfigs.PREFS_FILE, 0);
-            boolean enabled = preferences.getBoolean(
-                    HookConfigs.CARWITH_KEEPALIVE.key, HookConfigs.CARWITH_KEEPALIVE.defaultValue);
-            Settings.Global.putInt(
-                    context.getContentResolver(), HookConfigs.CARWITH_KEEPALIVE.key, enabled ? 1 : 0);
-            XLog.i("[CarLinkStateHook] 启动同步 Settings.Global: "
-                    + HookConfigs.CARWITH_KEEPALIVE.key + " = " + enabled);
-        } catch (Throwable th) {
-            XLog.e("[CarLinkStateHook] 启动同步 Settings.Global 失败", th);
-        }
-    }
-
     private void updateGlobalState(int connected) {
         mConnected = connected == 1;
         Context context = this.mContext;
@@ -180,7 +162,6 @@ public class CarLinkStateHook implements IHook {
 
     @Override
     public void onHook(ClassLoader classLoader) {
-        syncKeepAliveConfig();
         CarWithDexKitManager manager = CarWithDexKitManager.INSTANCE;
         String castControllerClass = manager.getCastControllerClass();
         if (castControllerClass == null || castControllerClass.isEmpty()) {

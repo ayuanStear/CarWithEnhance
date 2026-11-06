@@ -15,22 +15,12 @@ public final class HookConfigs {
     public static final HookItem AUTOPLAY = new HookItem(
             "hook_autoplay_enabled",
             "QQ音乐完美续播",
-            "开启后阻止上车续播自动播放歌单《巅峰潮流榜》",
-            true);
-    public static final HookItem COLDSTART = new HookItem(
-            "hook_coldstart_antikill_enabled",
-            "冷启动防误杀",
-            "阻止 CarWith 在媒体应用冷启动未完成时强制结束进程，并补一次后台唤醒",
+            "阻止 QQ 音乐上车续播自动跳转到“巅峰音乐榜”，只保留当前播放状态",
             true);
     public static final HookItem EXPERIENCE = new HookItem(
             "hook_experience_to_normal_enabled",
             "体验应用专区转普通列表",
-            "开启后把体验应用专区中的应用直接显示到普通应用列表；关闭后恢复专区显示",
-            true);
-    public static final HookItem CARWITH_KEEPALIVE = new HookItem(
-            "hook_carwith_keepalive_enabled",
-            "进程保活",
-            "解决因进程误杀而造成的断连、音乐中断",
+            "开启后把体验应用放到普通应用列表末尾，地图等官方应用不会被标记为体验应用",
             true);
     public static final HookItem DISCONNECT_KILL_MUSIC = new HookItem(
             "hook_disconnect_kill_music_enabled",
@@ -42,9 +32,7 @@ public final class HookConfigs {
 
     private static final List<HookItem> ALL_ITEMS = Collections.unmodifiableList(Arrays.asList(
             AUTOPLAY,
-            COLDSTART,
             EXPERIENCE,
-            CARWITH_KEEPALIVE,
             DISCONNECT_KILL_MUSIC));
 
     private HookConfigs() {

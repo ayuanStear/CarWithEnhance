@@ -5,6 +5,7 @@ import android.content.Context;
 import android.util.Log;
 import defpackage.o0;
 import defpackage.u0;
+import hun.mesh.carwithenhance.policy.QqAutoPlayPolicy;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -18,7 +19,6 @@ import java.util.Set;
 
 /* JADX INFO: loaded from: classes2.dex */
 public final class GenericAutoPlayHooks {
-    public static final int COLD_START_ANTI_KILL = 3;
     public static final int EXPERIENCE_TO_NORMAL = 4;
     public static final int MEDIA_APP_OPEN = 2;
     public static final int MEDIA_AUTO_PLAY = 1;
@@ -44,12 +44,74 @@ public final class GenericAutoPlayHooks {
         return resolve(2, classLoader);
     }
 
-    public static Object[] resolveColdStartAntiKill(ClassLoader classLoader) throws Exception {
-        return resolve(3, classLoader);
-    }
-
     public static Object[] resolveExperienceToNormal(ClassLoader classLoader) throws Exception {
         return resolve(4, classLoader);
+    }
+
+    public static Object[] resolveQqPlaylistCallback(ClassLoader classLoader) throws Exception {
+        String[][] specifications = {
+                {"boolean", "int", "java.util.List", "int", "java.lang.String", "android.os.Bundle"},
+                {"boolean", "java.util.List", "java.lang.String", "android.os.Bundle"},
+                {"java.util.List", "java.lang.String"},
+                {"java.util.List", "java.lang.String", "android.os.Bundle"},
+                {"boolean", "java.util.List", "java.lang.String"},
+                null
+        };
+        for (String[] parameterTypes : specifications) {
+            List<Candidate> candidates = queryQqPlaylist(parameterTypes, classLoader);
+            HashSet<String> seen = new HashSet<>();
+            for (Candidate candidate : candidates) {
+                if (!seen.add(candidate.className + "#" + candidate.methodName)) {
+                    continue;
+                }
+                Class<?> cls = Class.forName(candidate.className, false, classLoader);
+                for (Method method : cls.getDeclaredMethods()) {
+                    if (candidate.methodName.equals(method.getName())
+                            && acceptsQqPlaylistCallback(method)) {
+                        Log.i(TAG, "[通用Hook] 已解析 QQ_PLAYLIST_CALLBACK -> "
+                                + candidate.className + "#" + candidate.methodName);
+                        return new Object[]{cls, candidate.methodName};
+                    }
+                }
+            }
+        }
+        throw new IllegalStateException("[通用Hook] 未解析到 QQ_PLAYLIST_CALLBACK 目标");
+    }
+
+    private static List<Candidate> queryQqPlaylist(
+            String[] parameterTypes, ClassLoader classLoader) throws Exception {
+        Context context = appContext(classLoader);
+        ensureBridge(context, context.getApplicationInfo().sourceDir);
+        Object result = bridgeFindMethod.invoke(bridge, Proxy.newProxyInstance(
+                dexKitLoader,
+                new Class[]{Class.forName("defpackage.o0", false, dexKitLoader)},
+                new QqQueryHandler(parameterTypes, dexKitLoader)));
+        ArrayList<Candidate> candidates = new ArrayList<>();
+        if (!(result instanceof List)) {
+            return candidates;
+        }
+        for (Object item : (List) result) {
+            try {
+                Object value = item.getClass().getMethod("b", new Class<?>[0])
+                        .invoke(item, new Object[0]);
+                String className = (String) value.getClass().getField("a").get(value);
+                String methodName = (String) value.getClass().getField("b").get(value);
+                if (className != null && methodName != null && !className.isEmpty()) {
+                    candidates.add(new Candidate(className, methodName));
+                }
+            } catch (Throwable th) {
+                Log.w(TAG, "[通用Hook] 忽略无效 QQ 回调 DexKit 结果", th);
+            }
+        }
+        Log.i(TAG, "[通用Hook] QQ_PLAYLIST_CALLBACK 参数候选="
+                + (parameterTypes == null ? "ANY" : parameterTypes.length)
+                + "，结果数量=" + candidates.size());
+        return candidates;
+    }
+
+    private static boolean acceptsQqPlaylistCallback(Method method) {
+        return method.getReturnType() == Void.TYPE
+                && QqAutoPlayPolicy.isCompatibleCallback(method.getParameterTypes());
     }
 
     private static synchronized Object[] resolve(int i, ClassLoader classLoader) throws Exception {
@@ -80,7 +142,7 @@ public final class GenericAutoPlayHooks {
     private static List<Candidate> query(int i, ClassLoader classLoader) throws Exception {
         Context contextAppContext = appContext(classLoader);
         ensureBridge(contextAppContext, contextAppContext.getApplicationInfo().sourceDir);
-        Object objInvoke = bridgeFindMethod.invoke(bridge, Proxy.newProxyInstance(dexKitLoader, new Class[]{Class.forName("o0", false, dexKitLoader)}, new QueryHandler(i, dexKitLoader)));
+        Object objInvoke = bridgeFindMethod.invoke(bridge, Proxy.newProxyInstance(dexKitLoader, new Class[]{Class.forName("defpackage.o0", false, dexKitLoader)}, new QueryHandler(i, dexKitLoader)));
         ArrayList arrayList = new ArrayList();
         if (!(objInvoke instanceof List)) {
             return arrayList;
@@ -112,7 +174,7 @@ public final class GenericAutoPlayHooks {
             dexKitLoader = classLoader;
             Class<?> cls = Class.forName("org.luckypray.dexkit.DexKitBridge", true, classLoader);
             bridge = cls.getConstructor(String.class).newInstance(str);
-            bridgeFindMethod = cls.getMethod("c", Class.forName("o0", false, dexKitLoader));
+            bridgeFindMethod = cls.getMethod("c", Class.forName("defpackage.o0", false, dexKitLoader));
             dexPath = str;
         }
     }
@@ -154,10 +216,7 @@ public final class GenericAutoPlayHooks {
         if (i == 2) {
             return parameterTypes.length >= 2 && parameterTypes[0] == Context.class && parameterTypes[1] == String.class;
         }
-        if (i != 3) {
-            return i == 4 && parameterTypes.length == 1 && parameterTypes[0] == Set.class;
-        }
-        return parameterTypes.length == 2 && parameterTypes[0] == Context.class && parameterTypes[1] == String.class;
+        return i == 4 && parameterTypes.length == 1 && parameterTypes[0] == Set.class;
     }
 
     private static Context appContext(ClassLoader classLoader) throws Exception {
@@ -190,9 +249,6 @@ public final class GenericAutoPlayHooks {
         }
         if (i == 2) {
             return "MEDIA_APP_OPEN";
-        }
-        if (i == 3) {
-            return "COLD_START_ANTI_KILL";
         }
         if (i == 4) {
             return "EXPERIENCE_TO_NORMAL";
@@ -236,7 +292,7 @@ public final class GenericAutoPlayHooks {
                 return Boolean.TRUE;
             }
             Object obj2 = objArr[0];
-            Class<?> cls = Class.forName("u0", false, this.loader);
+            Class<?> cls = Class.forName("defpackage.u0", false, this.loader);
             Object objAllocate = GenericAutoPlayHooks.allocate(cls);
             cls.getMethod("n", String.class, cls).invoke(null, "void", objAllocate);
             Method method2 = cls.getMethod("m", String[].class);
@@ -247,9 +303,6 @@ public final class GenericAutoPlayHooks {
                 method3.invoke(objAllocate, (Object) new String[]{"MediaAutoPlayHelper"});
             } else if (i == 2) {
                 method3.invoke(objAllocate, (Object) new String[]{"startMediaApp isNormalCastMode="});
-            } else if (i == 3) {
-                method2.invoke(objAllocate, (Object) new String[]{"android.content.Context", "java.lang.String"});
-                method3.invoke(objAllocate, (Object) new String[]{"forceStopApp:"});
             } else if (i == 4) {
                 method2.invoke(objAllocate, (Object) new String[]{"java.util.Set"});
                 method3.invoke(objAllocate, (Object) new String[]{"publish data, pages="});
@@ -257,6 +310,47 @@ public final class GenericAutoPlayHooks {
                 throw new IllegalArgumentException("unknown query kind " + this.kind);
             }
             obj2.getClass().getField("c").set(obj2, objAllocate);
+            return Boolean.TRUE;
+        }
+    }
+
+    private static final class QqQueryHandler implements InvocationHandler {
+        private final String[] parameterTypes;
+        private final ClassLoader loader;
+
+        QqQueryHandler(String[] parameterTypes, ClassLoader loader) {
+            this.parameterTypes = parameterTypes;
+            this.loader = loader;
+        }
+
+        @Override
+        public Object invoke(Object proxy, Method method, Object[] args) throws Exception {
+            if (method.getDeclaringClass() == Object.class) {
+                if ("toString".equals(method.getName())) {
+                    return "QqPlaylistDexKitQuery";
+                }
+                if ("hashCode".equals(method.getName())) {
+                    return Integer.valueOf(System.identityHashCode(proxy));
+                }
+                if ("equals".equals(method.getName())) {
+                    return Boolean.valueOf(proxy == (args == null ? null : args[0]));
+                }
+            }
+            if (!"b".equals(method.getName()) || args == null || args.length != 1) {
+                return Boolean.TRUE;
+            }
+            Object query = args[0];
+            Class<?> queryClass = Class.forName("defpackage.u0", false, loader);
+            Object instruction = GenericAutoPlayHooks.allocate(queryClass);
+            queryClass.getMethod("n", String.class, queryClass)
+                    .invoke(null, "void", instruction);
+            if (parameterTypes != null) {
+                queryClass.getMethod("m", String[].class)
+                        .invoke(instruction, (Object) parameterTypes);
+            }
+            queryClass.getMethod("q", String[].class)
+                    .invoke(instruction, (Object) new String[]{"MediaAutoPlayHelper"});
+            query.getClass().getField("c").set(query, instruction);
             return Boolean.TRUE;
         }
     }
@@ -277,9 +371,6 @@ public final class GenericAutoPlayHooks {
                 u0Var.q(new String[]{"MediaAutoPlayHelper"});
             } else if (i == 2) {
                 u0Var.q(new String[]{"startMediaApp isNormalCastMode="});
-            } else if (i == 3) {
-                u0Var.m(new String[]{"android.content.Context", "java.lang.String"});
-                u0Var.q(new String[]{"forceStopApp:"});
             } else if (i == 4) {
                 u0Var.m(new String[]{"java.util.Set"});
                 u0Var.q(new String[]{"publish data, pages="});

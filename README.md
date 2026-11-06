@@ -4,8 +4,8 @@
 
 当前源码版本：
 
-- `versionCode`: 34
-- `versionName`: `2.3.3-skip-active`
+- `versionCode`: 36
+- `versionName`: `2.3.5-qq-compat`
 
 ## 当前断连行为
 
@@ -40,6 +40,8 @@ miui.carlink.intent.action.bluetooth.connect.state.changed
 
 ## 配置键
 
+- `hook_autoplay_enabled`：QQ音乐完美续播，只拦截 QQ 音乐的巅峰音乐榜队列，不控制其他播放器续播
+- `hook_experience_to_normal_enabled`：体验应用并入普通列表并排到末尾
 - `hook_disconnect_kill_music_enabled`：断连关闭音乐总开关
 - `hook_disconnect_kill_delay_sec`：音乐延迟关闭秒数，范围 `0..300`
 - 前台或播放中的音乐应用不会被停止
@@ -120,15 +122,36 @@ adb shell su -c "pm install -r -d --user 0 /data/local/tmp/CarWithEnhance.apk"
 
 本项目用于个人学习与自用设备功能增强。原始 CarWith Enhance 由 `Mesh_Hun` 开发；本仓库在其反编译源码基础上进行可构建化整理和功能调整。
 
-## 上车续播与作用域（2026-11-06）
+## 全应用续播与媒体切换（2026-11-06）
 
-- LSPosed 作用域增加 `com.tencent.qqmusic`，并在模块 `xposedscope` 中列为推荐应用。
-- 上车续播改为统一处理 QQ 音乐与其他音乐播放器，不再只续播 QQ 音乐。
-- 上车续播以 CarWith 自带的「上车自动续播」开关（`prefer_auto_play`）为准。
-- 每次上车续播优先打开 CarWith 官方上次记录的播放器（`xa.c` 使用记录 / `ma.a` 当前媒体应用），不再回到 `prefer_media_app` 默认播放器。
-- 播放过程中切换到其它音乐播放器时，自动结束上一个播放器。
+- LSPosed 作用域包含 `com.miui.carlink`、`android`（system_server）和 `com.tencent.qqmusic`，QQ 音乐作为推荐应用列出。
+- 全应用上车续播只跟随 CarWith「设置 → 个性化 → 上车续播」按钮，即 `prefer_auto_play`；模块里的 `hook_autoplay_enabled` 不参与全应用续播控制。
+- 模块菜单第一项恢复为「QQ音乐完美续播」，只阻止 QQ 音乐自动跳转到“巅峰音乐榜”队列；关闭后 QQ 音乐恢复官方行为。
+- 优先恢复 `last_media_app` 记录的上次最后启动播放器，再回退到 CarWith 官方记录、当前媒体应用和 `prefer_media_app`。
+- 官方 `MediaAutoPlayHelper.g(..., true)` 的上车续播目标会被校正到 `last_media_app`，不再优先播放旧的默认媒体应用。
+- 播放中打开另一个音乐播放器时，只记录“最后启动”，不会自动播放，也不会提前替换左侧媒体图标；真正进入 `STATE_PLAYING` 后才更新媒体图标。
+- 新播放器真正开始播放后，使用切换前记录的 `sPlayingPkg` 结束上一个播放器进程，不依赖已被暂停的旧会话再次被查询到。
+- 体验应用在官方排序完成后稳定移动到普通应用列表末尾；高德/百度/腾讯/Google 地图及已安装的官方应用不会再被标记为体验应用，并会清理旧体验标记。
 
-Release APK：`release/CarWithEnhance-2.3.3-skip-active.apk`
+## 版本兼容策略（2026-11-06）
+
+- 保留原配置键 `hook_autoplay_enabled`，升级后已有开关值继续生效，不需要清除数据。
+- QQ 音乐回调优先使用 CarWithDexKit 动态结果，再使用 `MediaAutoPlayHelper` 字符串特征做多签名 DexKit 回退，最后尝试旧版 `pa.a$b` 类名。
+- 不绑定单一方法名和参数表；同一目标类内会扫描所有 `void`、同时包含 `List` 与 `String` 参数的兼容回调。
+- 目标播放器从回调对象及其内部类字段动态读取，兼容旧版和新版字段重命名。
+- 全应用续播仍通过 `MediaAutoPlayHelper.g(String, boolean)` 动态解析，并保留 `last_media_app` 持久化数据。
+
+## 功能删除（2026-11-06）
+
+- 已完整删除冷启动防误杀逻辑、system_server 进程保活逻辑、进程 adj 注入和受保护进程列表。
+- 已删除仅受进程保活开关控制的 `ScreenOnHook` 及对应 DexKit 目标解析。
+- 旧配置键 `hook_coldstart_antikill_enabled`、`hook_carwith_keepalive_enabled` 会在模块加载时从模块设置中清理，不再出现在设置界面。
+
+Release APK：`release/CarWithEnhance-2.3.5-qq-compat.apk`
+
+SHA-256：`2A20D2F0399223652E7D7681F5C292C3EF9D51AC654FD9B26080C7847C51D436`
+
+自检报告：[docs/releases/2026-11-06-carwith-enhance-2.3.5.md](docs/releases/2026-11-06-carwith-enhance-2.3.5.md)
 
 ## QQ 音乐定制页（2026-11-06）
 

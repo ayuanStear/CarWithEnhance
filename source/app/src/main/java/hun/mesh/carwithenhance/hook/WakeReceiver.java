@@ -22,8 +22,7 @@ public class WakeReceiver extends BroadcastReceiver {
         try {
             context.getPackageManager().getPackageInfo(packageName, 0);
         } catch (PackageManager.NameNotFoundException e) {
-            AutoPlayAllHook.log(context, "WakeReceiver 忽略未安装应用: " + packageName);
-            return;
+            AutoPlayAllHook.log(context, "WakeReceiver 包查询失败，继续尝试唤醒: " + packageName);
         }
         AutoPlayAllHook.setAppContext(context);
         String mode = intent.getStringExtra("mode");

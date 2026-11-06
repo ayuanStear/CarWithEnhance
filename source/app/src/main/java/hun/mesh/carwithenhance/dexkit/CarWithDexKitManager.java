@@ -51,8 +51,6 @@ public final class CarWithDexKitManager {
     private static String settingsAdapterClass = "";
     private static String settingsAdapterMethods = "";
     private static String ucarSettingsFragmentClass = "";
-    private static String carlinkStateMachineClass = "";
-    private static String screenOnMethod = "";
     private static String bluetoothClass = "";
     private static String bluetoothMethod = "";
     private static String castControllerClass = "";
@@ -122,16 +120,6 @@ public final class CarWithDexKitManager {
             string11 = "";
         }
         ucarSettingsFragmentClass = string11;
-        String string12 = sharedPreferences.getString("carlinkStateMachineClass", "");
-        if (string12 == null) {
-            string12 = "";
-        }
-        carlinkStateMachineClass = string12;
-        String string13 = sharedPreferences.getString("screenOnMethod", "");
-        if (string13 == null) {
-            string13 = "";
-        }
-        screenOnMethod = string13;
         String string14 = sharedPreferences.getString("bluetoothClass", "");
         if (string14 == null) {
             string14 = "";
@@ -233,7 +221,6 @@ public final class CarWithDexKitManager {
             byteBufferWrap.order(ByteOrder.LITTLE_ENDIAN);
             aVar.c(byteBufferWrap.position() + byteBufferWrap.getInt(byteBufferWrap.position()), byteBufferWrap);
             o oVar = new o();
-            int i2 = 4;
             int iB = aVar.b(4);
             int iF = iB != 0 ? aVar.f(iB) : 0;
             for (int i3 = 0; i3 < iF; i3++) {
@@ -274,15 +261,6 @@ public final class CarWithDexKitManager {
                 XLog.i("[CarWithDexKit]: 找到 UCarScreenSettingsFragment 目标 -> " + str7);
             } else {
                 XLog.e("[CarWithDexKit]: 未找到或匹配到多个 UCarScreenSettingsFragment 目标，请检查匹配条件");
-            }
-            t0 t0Var8 = (t0) dexKitBridge.c(new h(i2)).a();
-            if (t0Var8 != null) {
-                carlinkStateMachineClass = t0Var8.b().a;
-                String str8 = t0Var8.b().b;
-                screenOnMethod = str8;
-                XLog.i("[CarWithDexKit]: 找到 ScreenOnHook 目标 -> " + carlinkStateMachineClass + "." + str8);
-            } else {
-                XLog.e("[CarWithDexKit]: 未找到或匹配到多个 ScreenOnHook 目标，请检查匹配条件");
             }
             t0 t0Var9 = (t0) dexKitBridge.c(new h(5)).a();
             if (t0Var9 != null) {
@@ -495,22 +473,6 @@ public final class CarWithDexKitManager {
     }
 
     /* JADX INFO: Access modifiers changed from: private */
-    public static final o1 resolveTargets$lambda$34(k0 k0Var) {
-        k0Var.getClass();
-        u0 u0Var = new u0();
-        resolveTargets$lambda$34$lambda$33(u0Var);
-        k0Var.c = u0Var;
-        return o1.a;
-    }
-
-    private static final o1 resolveTargets$lambda$34$lambda$33(u0 u0Var) {
-        u0Var.getClass();
-        u0Var.q("start ScreenOnTask");
-        u0.n("void", u0Var);
-        return o1.a;
-    }
-
-    /* JADX INFO: Access modifiers changed from: private */
     public static final o1 resolveTargets$lambda$38(k0 k0Var) {
         k0Var.getClass();
         u0 u0Var = new u0();
@@ -652,8 +614,6 @@ public final class CarWithDexKitManager {
         editorEdit.putString("settingsAdapterClass", settingsAdapterClass);
         editorEdit.putString("settingsAdapterMethods", settingsAdapterMethods);
         editorEdit.putString("ucarSettingsFragmentClass", ucarSettingsFragmentClass);
-        editorEdit.putString("carlinkStateMachineClass", carlinkStateMachineClass);
-        editorEdit.putString("screenOnMethod", screenOnMethod);
         editorEdit.putString("bluetoothClass", bluetoothClass);
         editorEdit.putString("bluetoothMethod", bluetoothMethod);
         editorEdit.putString("castControllerClass", castControllerClass);
@@ -690,10 +650,6 @@ public final class CarWithDexKitManager {
         return blurMethod;
     }
 
-    public final String getCarlinkStateMachineClass() {
-        return carlinkStateMachineClass;
-    }
-
     public final String getCastControllerClass() {
         return castControllerClass;
     }
@@ -728,10 +684,6 @@ public final class CarWithDexKitManager {
 
     public final String getQpMethod() {
         return qpMethod;
-    }
-
-    public final String getScreenOnMethod() {
-        return screenOnMethod;
     }
 
     public final String getSettingsAdapterClass() {
@@ -821,11 +773,6 @@ public final class CarWithDexKitManager {
         blurMethod = str;
     }
 
-    public final void setCarlinkStateMachineClass(String str) {
-        str.getClass();
-        carlinkStateMachineClass = str;
-    }
-
     public final void setCastControllerClass(String str) {
         str.getClass();
         castControllerClass = str;
@@ -869,11 +816,6 @@ public final class CarWithDexKitManager {
     public final void setQpMethod(String str) {
         str.getClass();
         qpMethod = str;
-    }
-
-    public final void setScreenOnMethod(String str) {
-        str.getClass();
-        screenOnMethod = str;
     }
 
     public final void setSettingsAdapterClass(String str) {

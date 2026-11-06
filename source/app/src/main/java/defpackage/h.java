@@ -21,10 +21,8 @@ public final /* synthetic */ class h implements o0 {
                 return CarWithDexKitManager.resolveTargets$lambda$27$lambda$21((k0) obj);
             case GenericAutoPlayHooks.MEDIA_APP_OPEN /* 2 */:
                 return CarWithDexKitManager.resolveTargets$lambda$27$lambda$24((k0) obj);
-            case GenericAutoPlayHooks.COLD_START_ANTI_KILL /* 3 */:
+            case 3:
                 return CarWithDexKitManager.resolveTargets$lambda$30((k0) obj);
-            case GenericAutoPlayHooks.EXPERIENCE_TO_NORMAL /* 4 */:
-                return CarWithDexKitManager.resolveTargets$lambda$34((k0) obj);
             case 5:
                 return CarWithDexKitManager.resolveTargets$lambda$38((k0) obj);
             case 6:

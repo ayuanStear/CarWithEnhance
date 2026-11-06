@@ -1,8 +1,6 @@
 package hun.mesh.carwithenhance.hook;
 
 import android.app.ActivityManager;
-import android.app.Application;
-import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -30,16 +28,17 @@ import de.robv.android.xposed.XposedHelpers;
 import hun.mesh.carwithenhance.BuildConfig;
 import hun.mesh.carwithenhance.dexkit.CarWithDexKitManager;
 import hun.mesh.carwithenhance.dexkit.GenericAutoPlayHooks;
+import hun.mesh.carwithenhance.policy.ExperienceAppPolicy;
+import hun.mesh.carwithenhance.policy.MediaPlaybackPolicy;
 import hun.mesh.carwithenhance.utils.AppUtils;
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
-import java.io.InputStreamReader;
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -56,7 +55,9 @@ import java.util.concurrent.ThreadFactory;
 
 /* JADX INFO: loaded from: classes2.dex */
 public class AutoPlayAllHook implements IHook {
+    private static final String APK_LOAD_UTIL = "p6.e";
     private static final String APPS_VIEW_MODEL = "com.carwith.launcher.apps.AppsViewModel";
+    private static final String MEDIA_OPEN_APP_HELPER = "e5.s";
     private static final String BROWSE_ACTION = "android.media.browse.MediaBrowserService";
     private static final String CARWITH_APP_MGR = "com.carwith.common.utils.c0";
     private static final String EXPERIENCE_PREF = "ucar_experience_app_added_category";
@@ -69,7 +70,7 @@ public class AutoPlayAllHook implements IHook {
     private static final String FPS_PREF_KEY = "user_setting_framerate";
     private static final String GSON_CLASS = "com.google.gson.Gson";
     private static final String KEY_CARWITH_AUTOPLAY = "prefer_auto_play";
-    private static final String KEY_COLDSTART_ANTIKILL = "hook_coldstart_antikill_enabled";
+    private static final String PREF_LAST_MEDIA_APP = "last_media_app";
     private static final String KEY_EXPERIENCE_TO_NORMAL = "hook_experience_to_normal_enabled";
     private static final String KEY_EXP_FLAGGED = "carwithenhance_exp_flagged";
     private static final String KEY_KILL_IMMEDIATELY = "hook_disconnect_kill_immediately_enabled";
@@ -116,11 +117,15 @@ public class AutoPlayAllHook implements IHook {
     private static volatile String sResumedPkg;
     private static volatile long sRetryGen;
     private static volatile String sSelectedApp;
+    private static volatile String sPlayingPkg;
+    private static volatile Set<String> sExperiencePackages = Collections.emptySet();
+    private static final Map<String, MediaController.Callback> SESSION_CALLBACKS = new ConcurrentHashMap();
     private static MediaSessionManager.OnActiveSessionsChangedListener sSessionListener;
     private static ExecutorService sSwitchExec;
     private static volatile long sWaitStartAt;
     private static volatile String sWaitingPkg;
     private static final String[] FALLBACK = {"com.netease.cloudmusic", "com.luna.music", "com.kugou.android", "cmccwm.mobilemusic", "cn.kuwo.player", "com.miui.player"};
+    private static final Set<String> EXPERIENCE_EXCLUDE = ExperienceAppPolicy.knownMapPackages();
     private static final Map<String, MediaBrowser> BROWSERS = new ConcurrentHashMap();
     private static final Map<String, Long> ATTEMPTS = new ConcurrentHashMap();
     private static final Map<String, Long> CAR_OPEN_AT = new ConcurrentHashMap();
@@ -228,6 +233,35 @@ public class AutoPlayAllHook implements IHook {
         try {
             Object[] objArrResolveMediaAutoPlay = GenericAutoPlayHooks.resolveMediaAutoPlay(classLoader);
             XposedBridge.hookAllMethods((Class) objArrResolveMediaAutoPlay[0], (String) objArrResolveMediaAutoPlay[1], new XC_MethodHook() { // from class: hun.mesh.carwithenhance.hook.AutoPlayAllHook.1
+                protected void beforeHookedMethod(XC_MethodHook.MethodHookParam methodHookParam) {
+                    try {
+                        Object obj = methodHookParam.args != null && methodHookParam.args.length > 0 ? methodHookParam.args[0] : null;
+                        Context context = AutoPlayAllHook.sAppCtx;
+                        if (obj instanceof String && context != null) {
+                            String pkg = (String) obj;
+                            boolean autoResume = methodHookParam.args.length > 1
+                                    && Boolean.TRUE.equals(methodHookParam.args[1]);
+                            if (autoResume) {
+                                String lastLaunched = AutoPlayAllHook.readLastUsedMediaApp();
+                                if (lastLaunched != null && !lastLaunched.isEmpty()
+                                        && !lastLaunched.equals(pkg)) {
+                                    AutoPlayAllHook.log(context,
+                                            "官方续播目标改为最后启动的播放器: " + pkg + " -> " + lastLaunched);
+                                    methodHookParam.args[0] = lastLaunched;
+                                    pkg = lastLaunched;
+                                }
+                            }
+                            if (MediaPlaybackPolicy.shouldSuppressPlayback(
+                                    AutoPlayAllHook.isPlaying(context, pkg),
+                                    AutoPlayAllHook.playingOtherMedia(context, pkg))) {
+                                AutoPlayAllHook.log(context, "其他音乐正在播放，拦截自动播放: " + pkg);
+                                methodHookParam.setResult(null);
+                            }
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                }
+
                 protected void afterHookedMethod(XC_MethodHook.MethodHookParam methodHookParam) {
                     try {
                         Object[] objArr = methodHookParam.args;
@@ -249,6 +283,7 @@ public class AutoPlayAllHook implements IHook {
         }
         hookCastState(classLoader);
         hookMediaAppOpen(classLoader);
+        hookDockIconPreservation(classLoader);
         hookMediaAppPref(classLoader);
         hookSessionAvailability(classLoader);
         hookExperienceApps(classLoader);
@@ -477,40 +512,131 @@ public class AutoPlayAllHook implements IHook {
                     }
                 });
                 log(null, "体验应用转普通列表的钩子已注册");
+                try {
+                    XposedBridge.hookAllMethods(
+                            XposedHelpers.findClass("com.carwith.common.utils.d0", classLoader),
+                            "U", new XC_MethodHook() {
+                                @Override
+                                protected void afterHookedMethod(MethodHookParam param) {
+                                    try {
+                                        Object result = param.getResult();
+                                        if (result instanceof List) {
+                                            ((List) result).removeAll(EXPERIENCE_EXCLUDE);
+                                        }
+                                    } catch (Throwable ignored) {
+                                    }
+                                }
+                            });
+                    log(null, "体验应用列表过滤已注册（排除地图/官方应用）");
+                } catch (Throwable th) {
+                    logErr(null, "体验应用列表过滤注册失败", th);
+                }
+                hookExperienceOrdering(classLoader);
             }
         } catch (Throwable th) {
             logErr(null, "体验应用转普通列表的钩子注册失败", th);
         }
     }
 
+    private static void hookExperienceOrdering(final ClassLoader classLoader) {
+        try {
+            XposedBridge.hookAllMethods(
+                    XposedHelpers.findClass(APPS_VIEW_MODEL, classLoader), "y", new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            try {
+                                Context context = sAppCtx;
+                                if (context == null || !isPrefEnabled(
+                                        context, KEY_EXPERIENCE_TO_NORMAL, true)
+                                        || param.args == null || param.args.length == 0
+                                        || !(param.args[0] instanceof List)) {
+                                    return;
+                                }
+                                Set<String> experience = sExperiencePackages;
+                                if (experience.isEmpty()) {
+                                    experience = new HashSet<>(experiencePackages(classLoader));
+                                    sExperiencePackages = Collections.unmodifiableSet(experience);
+                                }
+                                ExperienceAppPolicy.moveExperienceToEnd(
+                                        (List) param.args[0], experience,
+                                        app -> (String) XposedHelpers.getObjectField(app, "packageName"));
+                            } catch (Throwable th) {
+                                logErr(null, "体验应用末尾排序失败", th);
+                            }
+                        }
+                    });
+            log(null, "体验应用末尾排序钩子已注册");
+        } catch (Throwable th) {
+            logErr(null, "体验应用末尾排序钩子注册失败", th);
+        }
+    }
+
     /* JADX INFO: Access modifiers changed from: private */
     public static List<String> experiencePackages(ClassLoader classLoader) {
-        int iIntValue;
         LinkedHashSet linkedHashSet = new LinkedHashSet();
         try {
-            Object objCallStaticMethod = XposedHelpers.callStaticMethod(XposedHelpers.findClass(CARWITH_APP_MGR, classLoader), "O", new Object[0]);
-            if (objCallStaticMethod == null) {
-                return new ArrayList(linkedHashSet);
-            }
-            try {
-                Object objCallMethod = XposedHelpers.callMethod(XposedHelpers.callStaticMethod(XposedHelpers.findClass("com.carwith.common.utils.g3", classLoader), "e", new Object[0]), "d", new Object[0]);
-                if (!(objCallMethod instanceof Integer)) {
-                    iIntValue = 0;
-                } else {
-                    iIntValue = ((Integer) objCallMethod).intValue();
+            Object manager = XposedHelpers.callStaticMethod(
+                    XposedHelpers.findClass("com.carwith.common.utils.d0", classLoader), "R", new Object[0]);
+            if (manager != null) {
+                int workMode = -1;
+                try {
+                    Object helper = XposedHelpers.callStaticMethod(
+                            XposedHelpers.findClass("com.carwith.common.utils.i3", classLoader),
+                            "e", new Object[0]);
+                    workMode = ((Integer) XposedHelpers.callMethod(
+                            helper, "d", new Object[0])).intValue();
+                } catch (Throwable th) {
+                    logErr(null, "读取当前工作模式失败", th);
                 }
-            } catch (Throwable th) {
-                iIntValue = 0;
+                if (workMode >= 0) {
+                    addAllStrings(linkedHashSet,
+                            XposedHelpers.callMethod(manager, "U", new Object[]{Integer.valueOf(workMode)}));
+                }
+                if (linkedHashSet.isEmpty()) {
+                    int[] fallbackModes = {0, 1, 4, 8, 256, 512};
+                    for (int mode : fallbackModes) {
+                        addAllStrings(linkedHashSet,
+                                XposedHelpers.callMethod(manager, "U", new Object[]{Integer.valueOf(mode)}));
+                    }
+                }
             }
-            addAllStrings(linkedHashSet, XposedHelpers.callMethod(objCallStaticMethod, "R", new Object[]{Integer.valueOf(iIntValue)}));
-            if (iIntValue != 0) {
-                addAllStrings(linkedHashSet, XposedHelpers.callMethod(objCallStaticMethod, "R", new Object[]{0}));
-            }
-            return new ArrayList(linkedHashSet);
-        } catch (Throwable th2) {
-            logErr(null, "读取体验应用名单失败", th2);
-            return new ArrayList<>();
+        } catch (Throwable th) {
+            logErr(null, "读取体验应用名单失败", th);
         }
+        linkedHashSet.removeAll(officialPackages(classLoader));
+        for (String excluded : EXPERIENCE_EXCLUDE) {
+            linkedHashSet.remove(excluded);
+        }
+        return new ArrayList<>(linkedHashSet);
+    }
+
+    private static Set<String> officialPackages(ClassLoader classLoader) {
+        HashSet<String> result = new HashSet<>();
+        try {
+            Object manager = XposedHelpers.callStaticMethod(
+                    XposedHelpers.findClass("com.carwith.common.utils.d0", classLoader), "R", new Object[0]);
+            Object list = XposedHelpers.callMethod(manager, "P", new Object[0]);
+            if (list instanceof List) {
+                for (Object item : (List) list) {
+                    if (item == null) {
+                        continue;
+                    }
+                    int mode = ((Integer) XposedHelpers.callMethod(
+                            item, "getAppMode", new Object[0])).intValue();
+                    if (mode == 4 || mode == 5 || mode == 6 || mode == 7) {
+                        continue;
+                    }
+                    String pkg = (String) XposedHelpers.callMethod(
+                            item, "getPackageName", new Object[0]);
+                    if (pkg != null && pkg.length() > 0) {
+                        result.add(pkg);
+                    }
+                }
+            }
+        } catch (Throwable th) {
+            logErr(null, "读取官方适配应用失败", th);
+        }
+        return result;
     }
 
     private static void hookOwnPrefs(final ClassLoader classLoader) {
@@ -522,6 +648,10 @@ public class AutoPlayAllHook implements IHook {
             if (appContext != null && "com.miui.carlink".equals(appContext.getPackageName())) {
                 setAppContext(appContext);
                 SharedPreferences sharedPreferences = appContext.getSharedPreferences("carwithenhance_hooksettings", 0);
+                sharedPreferences.edit()
+                        .remove("hook_coldstart_antikill_enabled")
+                        .remove("hook_carwith_keepalive_enabled")
+                        .apply();
                 SharedPreferences.OnSharedPreferenceChangeListener onSharedPreferenceChangeListener = new SharedPreferences.OnSharedPreferenceChangeListener() { // from class: hun.mesh.carwithenhance.hook.AutoPlayAllHook.7
                     @Override // android.content.SharedPreferences.OnSharedPreferenceChangeListener
                     public void onSharedPreferenceChanged(SharedPreferences sharedPreferences2, String str) {
@@ -576,60 +706,65 @@ public class AutoPlayAllHook implements IHook {
 
     /* JADX INFO: Access modifiers changed from: private */
     /* JADX WARN: Code duplicated, block: B:26:0x0065 A[Catch: all -> 0x00cb, TryCatch #0 {all -> 0x00cb, blocks: (B:6:0x0009, B:9:0x0014, B:10:0x0038, B:12:0x003f, B:14:0x0047, B:16:0x004d, B:19:0x0055, B:26:0x0065, B:27:0x0069, B:29:0x006e, B:32:0x0075, B:22:0x005c, B:34:0x007a, B:36:0x0080, B:38:0x0086, B:40:0x0098, B:44:0x00a7), top: B:50:0x0009 }] */
-    public static int applyExperienceToNormal(Context context, ClassLoader classLoader, boolean z) {
+    public static int applyExperienceToNormal(Context context, ClassLoader classLoader, boolean enabled) {
         if (context == null || classLoader == null) {
             return 0;
         }
         try {
-            List<String> listExperiencePackages = experiencePackages(classLoader);
-            if (listExperiencePackages.isEmpty()) {
-                return 0;
-            }
-            SharedPreferences sharedPreferences = context.getSharedPreferences(EXPERIENCE_PREF, 0);
-            SharedPreferences sharedPreferences2 = context.getSharedPreferences("carwithenhance_hooksettings", 0);
-            HashSet hashSet = new HashSet(sharedPreferences2.getStringSet(KEY_EXP_FLAGGED, new HashSet()));
-            SharedPreferences.Editor editorEdit = null;
-            boolean z2 = false;
-            int i = 0;
-            for (String str : listExperiencePackages) {
-                if (z) {
-                    if (sharedPreferences.getBoolean(str, false)) {
-                        if (hashSet.add(str)) {
-                            z2 = true;
-                        }
-                    } else if (!hashSet.contains(str)) {
-                        if (editorEdit == null) {
-                            editorEdit = sharedPreferences.edit();
-                        }
-                        editorEdit.putBoolean(str, z);
-                        if (z && hashSet.add(str)) {
-                            z2 = true;
-                        }
-                        i++;
+            Set<String> desired = enabled
+                    ? new HashSet<>(experiencePackages(classLoader))
+                    : Collections.emptySet();
+            SharedPreferences sortPrefs = context.getSharedPreferences("ucar_settings_added_app_sort", 0);
+            SharedPreferences experiencePrefs = context.getSharedPreferences(EXPERIENCE_PREF, 0);
+            SharedPreferences ownPrefs = context.getSharedPreferences("carwithenhance_hooksettings", 0);
+            Set<String> flagged = new HashSet<>(ownPrefs.getStringSet(KEY_EXP_FLAGGED, new HashSet()));
+            Set<String> known = new HashSet<>(flagged);
+            known.addAll(desired);
+            known.addAll(EXPERIENCE_EXCLUDE);
+
+            SharedPreferences.Editor experienceEditor = null;
+            SharedPreferences.Editor sortEditor = null;
+            int touched = 0;
+            for (String pkg : known) {
+                if (pkg == null || pkg.isEmpty()) {
+                    continue;
+                }
+                boolean packageChanged = false;
+                boolean shouldEnable = enabled && desired.contains(pkg);
+                if (experiencePrefs.getBoolean(pkg, false) != shouldEnable) {
+                    if (experienceEditor == null) {
+                        experienceEditor = experiencePrefs.edit();
                     }
-                } else if (sharedPreferences.getBoolean(str, false)) {
-                    if (editorEdit == null) {
-                        editorEdit = sharedPreferences.edit();
+                    experienceEditor.putBoolean(pkg, shouldEnable);
+                    packageChanged = true;
+                }
+                if (sortPrefs.contains(pkg)) {
+                    if (sortEditor == null) {
+                        sortEditor = sortPrefs.edit();
                     }
-                    editorEdit.putBoolean(str, z);
-                    if (z) {
-                        z2 = true;
-                    }
-                    i++;
+                    sortEditor.remove(pkg);
+                    packageChanged = true;
+                }
+                if (packageChanged) {
+                    touched++;
                 }
             }
-            if (!z && !hashSet.isEmpty()) {
-                hashSet.clear();
-                z2 = true;
+
+            if (experienceEditor != null) {
+                experienceEditor.apply();
             }
-            if (z2) {
-                sharedPreferences2.edit().putStringSet(KEY_EXP_FLAGGED, new HashSet(hashSet)).apply();
+            if (sortEditor != null) {
+                sortEditor.apply();
             }
-            if (editorEdit != null) {
-                editorEdit.apply();
-                log(context, (z ? "体验应用已放到应用列表: " : "已还原体验应用: ") + i + " 个 / 名单共 " + listExperiencePackages.size() + " 个");
+            if (!flagged.equals(desired)) {
+                ownPrefs.edit().putStringSet(KEY_EXP_FLAGGED, new HashSet<>(desired)).apply();
             }
-            return i;
+            sExperiencePackages = enabled
+                    ? Collections.unmodifiableSet(new HashSet<>(desired))
+                    : Collections.emptySet();
+            log(context, (enabled ? "体验应用已放到普通列表末尾: " : "已还原体验应用: ")
+                    + desired.size() + " 个，本次清理旧标记 " + touched + " 个");
+            return desired.size();
         } catch (Throwable th) {
             logErr(context, "处理体验应用失败", th);
             return 0;
@@ -649,6 +784,10 @@ public class AutoPlayAllHook implements IHook {
                     String str;
                     try {
                         Context context2 = AutoPlayAllHook.sAppCtx;
+                        AutoPlayAllHook.registerSessionCallbacks(list);
+                        if (context2 != null && AutoPlayAllHook.sPlayingPkg == null) {
+                            AutoPlayAllHook.sPlayingPkg = AutoPlayAllHook.findPlayingPackage(context2, null);
+                        }
                         if (context2 != null && !AutoPlayAllHook.blockedBySwitchDrop(AutoPlayAllHook.sResumedPkg) && AutoPlayAllHook.blockedByUserKill(context2, AutoPlayAllHook.sResumedPkg) && (str = AutoPlayAllHook.sResumedPkg) != null && str.equals(AutoPlayAllHook.sWaitingPkg)) {
                             AutoPlayAllHook.access$1308();
                             String unused = AutoPlayAllHook.sWaitingPkg = null;
@@ -676,10 +815,200 @@ public class AutoPlayAllHook implements IHook {
             };
             sSessionListener = onActiveSessionsChangedListener;
             mediaSessionManager.addOnActiveSessionsChangedListener(onActiveSessionsChangedListener, null);
+            registerSessionCallbacks(mediaSessionManager.getActiveSessions(null));
+            String currentPlaying = findPlayingPackage(context, null);
+            if (currentPlaying != null) {
+                sPlayingPkg = currentPlaying;
+                sCurrentMediaPkg = currentPlaying;
+            }
             log(null, "媒体会话监听已注册");
         } catch (Throwable th) {
             logErr(null, "媒体会话监听注册失败", th);
         }
+    }
+
+    private static void registerSessionCallbacks(List<MediaController> sessions) {
+        if (sessions == null) {
+            return;
+        }
+        Handler handler = new Handler(Looper.getMainLooper());
+        for (MediaController controller : sessions) {
+            if (controller == null) {
+                continue;
+            }
+            String pkg = controller.getPackageName();
+            if (pkg == null) {
+                continue;
+            }
+            String callbackKey;
+            try {
+                callbackKey = pkg + "#" + controller.getSessionToken().hashCode();
+            } catch (Throwable th) {
+                continue;
+            }
+            if (SESSION_CALLBACKS.containsKey(callbackKey)) {
+                continue;
+            }
+            MediaController.Callback callback = new MediaController.Callback() {
+                @Override
+                public void onPlaybackStateChanged(PlaybackState state) {
+                    if (state != null && state.getState() == PlaybackState.STATE_PLAYING) {
+                        onMediaActuallyPlaying(pkg);
+                    }
+                }
+            };
+            try {
+                controller.registerCallback(callback, handler);
+                SESSION_CALLBACKS.put(callbackKey, callback);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    private static String findPlayingPackage(Context context, String exclude) {
+        try {
+            MediaSessionManager manager =
+                    (MediaSessionManager) context.getSystemService("media_session");
+            if (manager == null) {
+                return null;
+            }
+            List<MediaController> sessions = manager.getActiveSessions(null);
+            if (sessions == null) {
+                return null;
+            }
+            for (MediaController controller : sessions) {
+                if (controller == null) {
+                    continue;
+                }
+                String pkg = controller.getPackageName();
+                if (pkg == null || pkg.equals(exclude)) {
+                    continue;
+                }
+                PlaybackState state = controller.getPlaybackState();
+                if (state != null && state.getState() == PlaybackState.STATE_PLAYING) {
+                    return pkg;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private static void onMediaActuallyPlaying(String pkg) {
+        final Context context = sAppCtx;
+        if (context == null || pkg == null || !isMediaApp(sCl, pkg) || isNeverKill(pkg)) {
+            return;
+        }
+        if (pkg.equals(sPlayingPkg)) {
+            return;
+        }
+        saveLastOpenedMediaApp(context, pkg);
+        final String previous = MediaPlaybackPolicy.previousPackageToStop(sPlayingPkg, pkg, null);
+        sPlayingPkg = pkg;
+        sCurrentMediaPkg = pkg;
+        if (!sCarConnected) {
+            return;
+        }
+        sSelectedApp = pkg;
+        rememberUsedMediaApp(sCl, pkg);
+        markSessionMedia(pkg);
+        updateDockIconToPlaying(pkg);
+        if (previous != null && isMediaApp(sCl, previous) && !isNeverKill(previous)) {
+            log(context, "检测到 " + pkg + " 真正开始播放，结束上一个播放器: " + previous);
+            runOffMain(new Runnable() {
+                @Override
+                public void run() {
+                    killPreviousPlaying(context, previous, pkg);
+                }
+            });
+        }
+    }
+
+    private static void killPreviousPlaying(Context context, String previous, String current) {
+        try {
+            releaseCarwithBinding(previous);
+            releaseOwnBrowsers(previous);
+            gracefulStopBeforeKill(context, previous);
+            forceStop(context, previous, "切换到 " + current);
+            WOKE.remove(previous);
+            markSwitchDropped(context, previous, current);
+        } catch (Throwable th) {
+            logErr(context, "结束上一个播放器失败: " + previous, th);
+        }
+    }
+
+    private static void hookDockIconPreservation(final ClassLoader classLoader) {
+        try {
+            XposedHelpers.findAndHookMethod(APK_LOAD_UTIL, classLoader, "m",
+                    new Object[]{Context.class, String.class, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            try {
+                                Context context = param.args[0] instanceof Context
+                                        ? (Context) param.args[0] : sAppCtx;
+                                Object value = param.args[1];
+                                if (context != null && value instanceof String
+                                        && shouldPreserveDockIcon(context, (String) value)) {
+                                    log(context, "新播放器尚未播放，保留左侧媒体图标: " + value);
+                                    param.setResult(null);
+                                }
+                            } catch (Throwable ignored) {
+                            }
+                        }
+                    }});
+            log(null, "媒体图标替换保护钩子已注册");
+        } catch (Throwable th) {
+            logErr(null, "媒体图标替换保护钩子注册失败", th);
+        }
+        try {
+            XposedHelpers.findAndHookMethod(MEDIA_OPEN_APP_HELPER, classLoader, "f",
+                    new Object[]{String.class, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            try {
+                                Context context = sAppCtx;
+                                Object value = param.args[0];
+                                if (context != null && value instanceof String
+                                        && shouldPreserveDockIcon(context, (String) value)) {
+                                    param.setResult(null);
+                                }
+                            } catch (Throwable ignored) {
+                            }
+                        }
+                    }});
+            log(null, "媒体打开状态保护钩子已注册");
+        } catch (Throwable th) {
+            logErr(null, "媒体打开状态保护钩子注册失败", th);
+        }
+    }
+
+    private static void updateDockIconToPlaying(String pkg) {
+        Context context = sAppCtx;
+        if (context == null || pkg == null || pkg.isEmpty()) {
+            return;
+        }
+        try {
+            XposedHelpers.callStaticMethod(
+                    XposedHelpers.findClass(APK_LOAD_UTIL, sCl), "m",
+                    new Object[]{context, pkg});
+        } catch (Throwable th) {
+            logErr(context, "更新正在播放的媒体图标失败", th);
+        }
+        try {
+            Object helper = XposedHelpers.callStaticMethod(
+                    XposedHelpers.findClass(MEDIA_OPEN_APP_HELPER, sCl), "d", new Object[0]);
+            if (helper != null) {
+                XposedHelpers.callMethod(helper, "f", new Object[]{pkg});
+            }
+        } catch (Throwable th) {
+            logErr(context, "更新媒体打开状态失败", th);
+        }
+    }
+
+    private static boolean shouldPreserveDockIcon(Context context, String pkg) {
+        return context != null && isMediaApp(sCl, pkg)
+                && MediaPlaybackPolicy.shouldPreserveDockIcon(
+                        isPlaying(context, pkg), playingOtherMedia(context, pkg));
     }
 
     private static void hookMediaAppPref(ClassLoader classLoader) {
@@ -747,41 +1076,26 @@ public class AutoPlayAllHook implements IHook {
         } catch (Throwable th2) {
             logErr(null, "车机端打开应用钩子注册失败", th2);
         }
-        try {
-            Object[] objArrResolveColdStartAntiKill = GenericAutoPlayHooks.resolveColdStartAntiKill(classLoader);
-            XposedBridge.hookAllMethods((Class) objArrResolveColdStartAntiKill[0], (String) objArrResolveColdStartAntiKill[1], new XC_MethodHook() { // from class: hun.mesh.carwithenhance.hook.AutoPlayAllHook.12
-                protected void beforeHookedMethod(XC_MethodHook.MethodHookParam methodHookParam) {
-                    try {
-                        Object obj = methodHookParam.args[1];
-                        if (!(obj instanceof String)) {
-                            return;
-                        }
-                        String str = (String) obj;
-                        Context context = AutoPlayAllHook.sAppCtx;
-                        if (context != null && AutoPlayAllHook.isEnabled(context) && AutoPlayAllHook.isPrefEnabled(context, AutoPlayAllHook.KEY_COLDSTART_ANTIKILL, true) && !AutoPlayAllHook.blockedByUserKill(context, str) && !AutoPlayAllHook.blockedBySwitchDrop(str) && AutoPlayAllHook.isNowDesired(str) && AutoPlayAllHook.isTarget(classLoader, str) && AutoPlayAllHook.recentlyOpenedOnCar(str)) {
-                            AutoPlayAllHook.log(context, "冷启动期间阻止 CarWith 结束应用，并补一次唤醒: " + str);
-                            AutoPlayAllHook.sendMediaButton(context, str);
-                            AutoPlayAllHook.requestModuleBind(context, str);
-                            methodHookParam.setResult((Object) null);
-                        }
-                    } catch (Throwable th3) {
-                    }
-                }
-            });
-            log(null, "阻止误杀冷启动应用的钩子已注册");
-        } catch (Throwable th3) {
-            logErr(null, "阻止误杀冷启动应用的钩子注册失败", th3);
-        }
     }
 
     /* JADX INFO: Access modifiers changed from: private */
     public static void preWakeForCarOpen(String str, String str2) {
-        Context context;
-        if (str == null) {
+        if (str == null || str.length() == 0) {
             return;
         }
         try {
-            if (str.length() != 0 && (context = sAppCtx) != null && isEnabled(context) && !blockedByUserKill(context, str) && !blockedBySwitchDrop(str) && !isProcessRunning(context, str) && isMediaApp(sCl, str)) {
+            Context context = sAppCtx;
+            if (context == null || !isEnabled(context) || !isMediaApp(sCl, str)) {
+                return;
+            }
+            saveLastOpenedMediaApp(context, str);
+            if (MediaPlaybackPolicy.shouldSuppressPlayback(
+                    isPlaying(context, str), playingOtherMedia(context, str))) {
+                log(context, str2 + " " + str + "，其他音乐正在播放，仅记录最后启动应用，不自动播放");
+                return;
+            }
+            if (!blockedByUserKill(context, str) && !blockedBySwitchDrop(str)
+                    && !isProcessRunning(context, str)) {
                 log(context, str2 + " " + str + "，先把它后台唤醒");
                 CAR_OPEN_AT.put(str, Long.valueOf(SystemClock.elapsedRealtime()));
                 markSessionMedia(str);
@@ -868,8 +1182,12 @@ public class AutoPlayAllHook implements IHook {
         sLastStatePkg = null;
         sResumedPkg = null;
         sInitialResumeDone = false;
+        sPlayingPkg = null;
         sCarConnected = true;
         log(null, "CarWith 已连接");
+        if (sAppCtx != null) {
+            sPlayingPkg = findPlayingPackage(sAppCtx, null);
+        }
         logAudioState(sAppCtx, "车机连接时");
         ClassLoader classLoader = sCl;
         Context context = sAppCtx;
@@ -907,6 +1225,10 @@ public class AutoPlayAllHook implements IHook {
         try {
             Context context = sAppCtx;
             if (context != null && isEnabled(context) && (lastUsedMediaApp = readLastUsedMediaApp()) != null && lastUsedMediaApp.length() != 0 && isMediaApp(sCl, lastUsedMediaApp) && !isNeverKill(lastUsedMediaApp)) {
+                if (playingOtherMedia(context, lastUsedMediaApp)) {
+                    log(context, "连接时其他音乐正在播放，暂不自动续播 " + lastUsedMediaApp);
+                    return;
+                }
                 log(context, "本次连接待续播: " + lastUsedMediaApp + " (CarWith自带续播开关=" + readPrefAutoPlay() + ")");
                 learnCurrentMedia(lastUsedMediaApp);
                 if (!isProcessRunning(context, lastUsedMediaApp) && isMediaApp(sCl, lastUsedMediaApp)) {
@@ -928,22 +1250,25 @@ public class AutoPlayAllHook implements IHook {
     }
 
     private static String readLastUsedMediaApp() {
-        String official = carwithLastUsedMediaApp();
-        if (official == null || official.length() == 0) {
-            official = carwithCurrentMediaApp();
+        String lastLaunched = null;
+        Context context = sAppCtx;
+        if (context != null) {
+            lastLaunched = context.getSharedPreferences(PREFS, 0)
+                    .getString(PREF_LAST_MEDIA_APP, null);
         }
-        if (official != null && official.length() > 0 && isMediaApp(sCl, official)) {
-            return official;
+        return MediaPlaybackPolicy.chooseLastLaunched(
+                lastLaunched,
+                carwithLastUsedMediaApp(),
+                carwithCurrentMediaApp(),
+                selectedApp(),
+                pkg -> isMediaApp(sCl, pkg));
+    }
+
+    private static void saveLastOpenedMediaApp(Context context, String pkg) {
+        if (context == null || pkg == null || pkg.length() == 0 || !isMediaApp(sCl, pkg)) {
+            return;
         }
-        String strSelectedApp = selectedApp();
-        if (strSelectedApp != null && strSelectedApp.length() > 0 && isMediaApp(sCl, strSelectedApp)) {
-            return strSelectedApp;
-        }
-        String pref = readPrefMediaApp();
-        if (pref != null && pref.length() > 0 && isMediaApp(sCl, pref)) {
-            return pref;
-        }
-        return null;
+        context.getSharedPreferences(PREFS, 0).edit().putString(PREF_LAST_MEDIA_APP, pkg).apply();
     }
 
     private static String selectedApp() {
@@ -971,11 +1296,7 @@ public class AutoPlayAllHook implements IHook {
 
     /* JADX INFO: Access modifiers changed from: private */
     public static boolean readPrefAutoPlay() {
-        try {
-            return sAppCtx.getSharedPreferences(PREF_MEDIA_APP, 0).getBoolean(KEY_CARWITH_AUTOPLAY, true);
-        } catch (Throwable th) {
-            return true;
-        }
+        return autoplayEnabled(sAppCtx);
     }
 
     /* JADX INFO: Access modifiers changed from: private */
@@ -1043,7 +1364,7 @@ public class AutoPlayAllHook implements IHook {
             Context context = sAppCtx;
             if (context != null && str != null && str.length() != 0 && isMediaApp(sCl, str) && !isNeverKill(str)) {
                 markSessionMedia(str);
-                if (i != 1) {
+                if (!MediaPlaybackPolicy.shouldRecordLastLaunchedEvent(i)) {
                     long jElapsedRealtime = SystemClock.elapsedRealtime();
                     if (!str.equals(sLastStatePkg) || jElapsedRealtime - sLastStateAt > 10000) {
                         sLastStatePkg = str;
@@ -1053,11 +1374,17 @@ public class AutoPlayAllHook implements IHook {
                     }
                     return;
                 }
+                saveLastOpenedMediaApp(context, str);
                 if (SWITCH_DROPPED.remove(str) != null) {
                     log(context, "你在车机上重新选了 " + str + "，重新允许唤醒它");
                 }
                 if (USER_KILLED.remove(str)) {
                     log(context, "你在车机上重新选了 " + str + "，恢复自动唤醒");
+                }
+                if (MediaPlaybackPolicy.shouldSuppressPlayback(
+                        isPlaying(context, str), playingOtherMedia(context, str))) {
+                    log(context, "其他音乐正在播放，仅记录最后启动，不切换当前媒体/图标: " + str);
+                    return;
                 }
                 sSelectedApp = str;
                 CAR_OPEN_AT.put(str, Long.valueOf(SystemClock.elapsedRealtime()));
@@ -1082,85 +1409,6 @@ public class AutoPlayAllHook implements IHook {
             sSwitchExec.execute(runnable);
         } catch (Throwable th) {
             runnable.run();
-        }
-    }
-
-    private static void runSwitchAsync(final String str) {
-        try {
-            if (sSwitchExec == null) {
-                sSwitchExec = Executors.newSingleThreadExecutor(new ThreadFactory() { // from class: hun.mesh.carwithenhance.hook.AutoPlayAllHook.16
-                    @Override // java.util.concurrent.ThreadFactory
-                    public Thread newThread(Runnable runnable) {
-                        Thread thread = new Thread(runnable, "carwith-enhance-switch");
-                        thread.setDaemon(true);
-                        return thread;
-                    }
-                });
-            }
-            sSwitchExec.execute(new Runnable() { // from class: hun.mesh.carwithenhance.hook.AutoPlayAllHook.17
-                @Override // java.lang.Runnable
-                public void run() {
-                    try {
-                        AutoPlayAllHook.doSwitch(AutoPlayAllHook.sAppCtx, str);
-                    } catch (Throwable th) {
-                        AutoPlayAllHook.logErr(AutoPlayAllHook.sAppCtx, "切换处理失败: " + str, th);
-                    }
-                }
-            });
-        } catch (Throwable th) {
-            doSwitch(sAppCtx, str);
-        }
-    }
-
-    /* JADX INFO: Access modifiers changed from: private */
-    public static void doSwitch(Context context, String str) {
-        if (context == null || str == null || !isEnabled(context)) {
-            return;
-        }
-        if (!str.equals(sSelectedApp)) {
-            log(context, "切换目标已变化，跳过对 " + str + " 的处理");
-            return;
-        }
-        LinkedHashSet linkedHashSet = new LinkedHashSet();
-        linkedHashSet.add(sCurrentMediaPkg);
-        linkedHashSet.add(sActiveWokePkg);
-        Iterator it = linkedHashSet.iterator();
-        while (it.hasNext()) {
-            killSwitchTarget(context, (String) it.next(), str, "车机端切换到 " + str);
-        }
-        String str2 = sActiveWokePkg;
-        if (str2 != null && !str2.equals(str)) {
-            sActiveWokePkg = null;
-        }
-        sCurrentMediaPkg = str;
-        if (QQ_MUSIC.equals(str) || isProcessRunning(context, str) || !isMediaApp(sCl, str)) {
-            return;
-        }
-        log(context, "车机端切换到 " + str + "，先后台唤醒它");
-        WOKE.add(str);
-        sActiveWokePkg = str;
-        sendMediaButton(context, str);
-        startPlayerService(context, str);
-        requestModuleBind(context, str);
-    }
-
-    private static void killSwitchTarget(Context context, String str, String str2, String str3) {
-        if (str == null) {
-            return;
-        }
-        try {
-            if (str.length() == 0 || str.equals(str2) || !isKillCandidate(str)) {
-                return;
-            }
-            if (!isProcessRunning(context, str) && !hasSession(context, str) && !isPlaying(context, str)) {
-                return;
-            }
-            WOKE.add(str);
-            log(context, "切换清理，结束上一个播放器: " + str);
-            releaseWoke(context, str, str3);
-            markSwitchDropped(context, str, str2);
-        } catch (Throwable th) {
-            logErr(context, "切换清理失败: " + str, th);
         }
     }
 
@@ -1532,404 +1780,6 @@ public class AutoPlayAllHook implements IHook {
     }
 
     /* JADX INFO: Access modifiers changed from: private */
-    public static void dumpAppList(final Context context, ClassLoader classLoader) {
-        try {
-            final Object objNewInstance = XposedHelpers.newInstance(XposedHelpers.findClass(GenericAutoPlayHooks.getExperienceClassName(), classLoader), new Object[]{(Application) context.getApplicationContext()});
-            log(context, "应用列表自检: 开始构建");
-            XposedHelpers.callMethod(objNewInstance, GenericAutoPlayHooks.getExperienceMethodName(), new Object[]{null});
-            if (sHandler == null) {
-                sHandler = new Handler(Looper.getMainLooper());
-            }
-            sHandler.postDelayed(new Runnable() { // from class: hun.mesh.carwithenhance.hook.AutoPlayAllHook.19
-                @Override // java.lang.Runnable
-                public void run() {
-                    try {
-                        int i = 0;
-                        Object objCallMethod = XposedHelpers.callMethod(XposedHelpers.callMethod(objNewInstance, "j", new Object[0]), "getValue", new Object[0]);
-                        if (objCallMethod == null) {
-                            AutoPlayAllHook.log(context, "应用列表自检: 还没有数据");
-                            return;
-                        }
-                        AutoPlayAllHook.log(context, "应用列表自检: 标题=" + XposedHelpers.getObjectField(objCallMethod, "b"));
-                        Object objectField = XposedHelpers.getObjectField(objCallMethod, "a");
-                        if (objectField instanceof List) {
-                            for (Object obj : (List) objectField) {
-                                StringBuilder sb = new StringBuilder();
-                                if (obj instanceof List) {
-                                    for (Object obj2 : (List) obj) {
-                                        if (sb.length() > 0) {
-                                            sb.append(',');
-                                        }
-                                        sb.append(XposedHelpers.getObjectField(obj2, "packageName"));
-                                    }
-                                }
-                                AutoPlayAllHook.log(context, "应用列表自检: 第" + i + "页=" + ((Object) sb));
-                                i++;
-                            }
-                        }
-                        AutoPlayAllHook.log(context, "应用列表自检: 共 " + i + " 页");
-                    } catch (Throwable th) {
-                        AutoPlayAllHook.logErr(context, "应用列表自检失败", th);
-                    }
-                }
-            }, 4000L);
-        } catch (Throwable th) {
-            logErr(context, "应用列表自检启动失败", th);
-        }
-    }
-
-    private static void registerTestReceiver(final ClassLoader classLoader) {
-        try {
-            Context appContext = AppUtils.getAppContext(classLoader);
-            if (appContext == null) {
-                return;
-            }
-            setAppContext(appContext);
-            appContext.registerReceiver(new BroadcastReceiver() { // from class: hun.mesh.carwithenhance.hook.AutoPlayAllHook.20
-                @Override // android.content.BroadcastReceiver
-                public void onReceive(final Context context, Intent intent) {
-                    Class clsFindClass;
-                    Class clsFindClass2;
-                    Object objCallStaticMethod;
-                    String strFindFpsOptions;
-                    final String stringExtra = intent.getStringExtra(WakeReceiver.EXTRA_PKG);
-                    String stringExtra2 = intent.getStringExtra("mode");
-                    AutoPlayAllHook.log(context, "测试请求: " + stringExtra + " mode=" + stringExtra2);
-                    if ("disconnect".equals(stringExtra2)) {
-                        AutoPlayAllHook.onCarDisconnected();
-                        return;
-                    }
-                    if ("lyric".equals(stringExtra2)) {
-                        AutoPlayAllHook.dumpLyric(stringExtra, classLoader);
-                        return;
-                    }
-                    if ("connect".equals(stringExtra2)) {
-                        AutoPlayAllHook.onCarConnected();
-                        return;
-                    }
-                    if ("select".equals(stringExtra2)) {
-                        AutoPlayAllHook.onMediaAppEvent(stringExtra, 1);
-                        AutoPlayAllHook.log(context, "模拟车机端用户切换: " + stringExtra);
-                        return;
-                    }
-                    if ("state".equals(stringExtra2)) {
-                        AutoPlayAllHook.onMediaAppEvent(stringExtra, 3);
-                        AutoPlayAllHook.log(context, "模拟车机卡片刷新: " + stringExtra);
-                        return;
-                    }
-                    if ("pemi".equals(stringExtra2)) {
-                        try {
-                            XposedHelpers.callStaticMethod(XposedHelpers.findClass("l6.e", classLoader), "m", new Object[]{context, stringExtra});
-                            AutoPlayAllHook.log(context, "直接调用 p6.e.m: " + stringExtra);
-                            return;
-                        } catch (Throwable th) {
-                            AutoPlayAllHook.logErr(context, "模拟选择失败", th);
-                            return;
-                        }
-                    }
-                    if ("expdump".equals(stringExtra2)) {
-                        List listExperiencePackages = AutoPlayAllHook.experiencePackages(classLoader);
-                        AutoPlayAllHook.log(context, "体验应用名单(" + listExperiencePackages.size() + "): " + listExperiencePackages);
-                        AutoPlayAllHook.log(context, "已加入普通列表的标记: " + context.getSharedPreferences(AutoPlayAllHook.EXPERIENCE_PREF, 0).getAll());
-                        return;
-                    }
-                    if ("expfix".equals(stringExtra2)) {
-                        AutoPlayAllHook.log(context, "体验应用已放到应用列表: 改动 " + AutoPlayAllHook.applyExperienceToNormal(context, classLoader, true) + " 个");
-                        return;
-                    }
-                    if ("expoff".equals(stringExtra2)) {
-                        AutoPlayAllHook.log(context, "已还原体验应用标记: 改动 " + AutoPlayAllHook.applyExperienceToNormal(context, classLoader, false) + " 个");
-                        return;
-                    }
-                    if ("applist".equals(stringExtra2)) {
-                        AutoPlayAllHook.dumpAppList(context, classLoader);
-                        return;
-                    }
-                    if ("fps".equals(stringExtra2)) {
-                        try {
-                            SharedPreferences sharedPreferences = context.getSharedPreferences(AutoPlayAllHook.FPS_PREF_FILE, 0);
-                            int i = sharedPreferences.getInt(AutoPlayAllHook.FPS_PREF_KEY, -1);
-                            try {
-                                clsFindClass = XposedHelpers.findClass(AutoPlayAllHook.FPS_HELPER_NEW, classLoader);
-                            } catch (Throwable th2) {
-                                clsFindClass = null;
-                            }
-                            try {
-                                clsFindClass2 = XposedHelpers.findClass(AutoPlayAllHook.FPS_HELPER, classLoader);
-                            } catch (Throwable th3) {
-                                clsFindClass2 = null;
-                            }
-                            StringBuilder sb = new StringBuilder();
-                            int i2 = 0;
-                            for (int i3 = 4; i2 <= i3; i3 = 4) {
-                                sharedPreferences.edit().putInt(AutoPlayAllHook.FPS_PREF_KEY, i2).apply();
-                                if (clsFindClass != null) {
-                                    objCallStaticMethod = XposedHelpers.callStaticMethod(clsFindClass, "d", new Object[0]);
-                                } else if (clsFindClass2 != null) {
-                                    objCallStaticMethod = XposedHelpers.callStaticMethod(clsFindClass2, "b", new Object[]{Integer.valueOf(i2)});
-                                } else {
-                                    objCallStaticMethod = "?";
-                                }
-                                if (sb.length() > 0) {
-                                    sb.append(", ");
-                                }
-                                sb.append(i2).append("->").append(objCallStaticMethod);
-                                i2++;
-                            }
-                            if (i >= 0) {
-                                sharedPreferences.edit().putInt(AutoPlayAllHook.FPS_PREF_KEY, i).apply();
-                            }
-                            AutoPlayAllHook.log(context, "帧率档位自检: " + ((Object) sb) + " (已恢复为 " + i + ")");
-                            return;
-                        } catch (Throwable th4) {
-                            AutoPlayAllHook.logErr(context, "帧率档位自检失败", th4);
-                            return;
-                        }
-                    }
-                    if ("json".equals(stringExtra2)) {
-                        try {
-                            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(context.getAssets().open("settings_config.json"), "UTF-8"));
-                            StringBuilder sb2 = new StringBuilder();
-                            while (true) {
-                                String line = bufferedReader.readLine();
-                                if (line == null) {
-                                    break;
-                                } else {
-                                    sb2.append(line).append('\n');
-                                }
-                            }
-                            bufferedReader.close();
-                            String strInsertFiftyFpsItem = AutoPlayAllHook.insertFiftyFpsItem(sb2.toString());
-                            if (strInsertFiftyFpsItem == null) {
-                                AutoPlayAllHook.log(context, "菜单自检: 未找到 60FPS 项");
-                                return;
-                            } else {
-                                int iIndexOf = strInsertFiftyFpsItem.indexOf("50FPS");
-                                AutoPlayAllHook.log(context, "菜单自检: 已插入 50FPS 档位, 周围=" + strInsertFiftyFpsItem.substring(Math.max(0, iIndexOf - 60), Math.min(strInsertFiftyFpsItem.length(), iIndexOf + 90)).replace('\n', ' '));
-                                return;
-                            }
-                        } catch (Throwable th5) {
-                            AutoPlayAllHook.logErr(context, "菜单自检失败", th5);
-                            return;
-                        }
-                    }
-                    if ("jsonparse".equals(stringExtra2)) {
-                        try {
-                            BufferedReader bufferedReader2 = new BufferedReader(new InputStreamReader(context.getAssets().open("settings_config.json"), "UTF-8"));
-                            StringBuilder sb3 = new StringBuilder();
-                            while (true) {
-                                String line2 = bufferedReader2.readLine();
-                                if (line2 == null) {
-                                    break;
-                                } else {
-                                    sb3.append(line2).append('\n');
-                                }
-                            }
-                            bufferedReader2.close();
-                            Class clsFindClass3 = XposedHelpers.findClass(AutoPlayAllHook.GSON_CLASS, classLoader);
-                            Object objInvoke = clsFindClass3.getMethod("fromJson", String.class, Type.class).invoke(XposedHelpers.newInstance(clsFindClass3, new Object[0]), sb3.toString(), List.class);
-                            if (!(objInvoke instanceof List)) {
-                                strFindFpsOptions = null;
-                            } else {
-                                Iterator it = ((List) objInvoke).iterator();
-                                strFindFpsOptions = null;
-                                while (it.hasNext() && (strFindFpsOptions = AutoPlayAllHook.findFpsOptions(it.next(), 0)) == null) {
-                                }
-                            }
-                            StringBuilder sbAppend = new StringBuilder().append("菜单解析自检: 帧率选项 = ");
-                            if (strFindFpsOptions == null) {
-                                strFindFpsOptions = "(未找到)";
-                            }
-                            AutoPlayAllHook.log(context, sbAppend.append(strFindFpsOptions).toString());
-                            return;
-                        } catch (Throwable th6) {
-                            AutoPlayAllHook.logErr(context, "菜单解析自检失败", th6);
-                            return;
-                        }
-                    }
-                    if ("items".equals(stringExtra2)) {
-                        try {
-                            Object objInvoke2 = AutoPlayAllHook.class.getClassLoader().loadClass("hun.mesh.carwithenhance.config.HookConfigs").getMethod("getAllItems", new Class[0]).invoke(null, new Object[0]);
-                            StringBuilder sb4 = new StringBuilder();
-                            if (objInvoke2 instanceof List) {
-                                for (Object obj : (List) objInvoke2) {
-                                    Object obj2 = obj.getClass().getField("key").get(obj);
-                                    Object obj3 = obj.getClass().getField("title").get(obj);
-                                    if (sb4.length() > 0) {
-                                        sb4.append(" | ");
-                                    }
-                                    sb4.append(obj3).append('(').append(obj2).append(')');
-                                }
-                            }
-                            AutoPlayAllHook.log(context, "设置项自检: " + ((Object) sb4));
-                            return;
-                        } catch (Throwable th7) {
-                            AutoPlayAllHook.logErr(context, "设置项自检失败", th7);
-                            return;
-                        }
-                    }
-                    if ("autoplay".equals(stringExtra2)) {
-                        try {
-                            String stringExtra3 = intent.getStringExtra("value");
-                            if (stringExtra3 != null) {
-                                context.getSharedPreferences(AutoPlayAllHook.PREF_MEDIA_APP, 0).edit().putBoolean(AutoPlayAllHook.KEY_CARWITH_AUTOPLAY, Boolean.parseBoolean(stringExtra3)).apply();
-                            }
-                            AutoPlayAllHook.log(context, "续播开关自检: CarWith上车续播=" + AutoPlayAllHook.readPrefAutoPlay() + ", 本功能启用=" + AutoPlayAllHook.isEnabled(context));
-                            return;
-                        } catch (Throwable th8) {
-                            AutoPlayAllHook.logErr(context, "续播开关自检失败", th8);
-                            return;
-                        }
-                    }
-                    if ("fpslabel".equals(stringExtra2)) {
-                        try {
-                            SharedPreferences sharedPreferences2 = context.getSharedPreferences(AutoPlayAllHook.FPS_PREF_FILE, 0);
-                            int i4 = sharedPreferences2.getInt(AutoPlayAllHook.FPS_PREF_KEY, -1);
-                            Class clsFindClass4 = XposedHelpers.findClass(AutoPlayAllHook.FPS_LABEL_CLASS, classLoader);
-                            StringBuilder sb5 = new StringBuilder();
-                            for (int i5 = 0; i5 <= 4; i5++) {
-                                sharedPreferences2.edit().putInt(AutoPlayAllHook.FPS_PREF_KEY, i5).apply();
-                                Object objCallStaticMethod2 = XposedHelpers.callStaticMethod(clsFindClass4, "l", new Object[]{context, AutoPlayAllHook.FPS_PREF_KEY});
-                                if (sb5.length() > 0) {
-                                    sb5.append(", ");
-                                }
-                                sb5.append(i5).append("->").append(objCallStaticMethod2);
-                            }
-                            if (i4 >= 0) {
-                                sharedPreferences2.edit().putInt(AutoPlayAllHook.FPS_PREF_KEY, i4).apply();
-                            }
-                            AutoPlayAllHook.log(context, "帧率行文字自检: " + ((Object) sb5) + " (已恢复为 " + i4 + ")");
-                            return;
-                        } catch (Throwable th9) {
-                            AutoPlayAllHook.logErr(context, "帧率行文字自检失败", th9);
-                            return;
-                        }
-                    }
-                    if ("setexp".equals(stringExtra2)) {
-                        boolean z = !"false".equals(intent.getStringExtra("value"));
-                        context.getSharedPreferences("carwithenhance_hooksettings", 0).edit().putBoolean(AutoPlayAllHook.KEY_EXPERIENCE_TO_NORMAL, z).apply();
-                        AutoPlayAllHook.log(context, "已把开关置为: " + z);
-                        return;
-                    }
-                    if ("mbonly".equals(stringExtra2)) {
-                        AutoPlayAllHook.sendMediaButton(context, stringExtra);
-                        AutoPlayAllHook.requestModuleBind(context, stringExtra);
-                        return;
-                    }
-                    if ("startsvc".equals(stringExtra2)) {
-                        AutoPlayAllHook.log(context, "测试启动播放服务: " + stringExtra + " -> " + AutoPlayAllHook.startPlayerService(context, stringExtra));
-                        return;
-                    }
-                    if ("sessionplay".equals(stringExtra2)) {
-                        AutoPlayAllHook.log(context, "测试会话播放: " + stringExtra + " -> " + AutoPlayAllHook.playViaSession(context, stringExtra));
-                        return;
-                    }
-                    if ("pauseall".equals(stringExtra2)) {
-                        AutoPlayAllHook.log(context, "测试断开前暂停: " + (AutoPlayAllHook.pauseBeforeDisconnect(context) ? "已暂停" : "无需暂停"));
-                        return;
-                    }
-                    if ("killpkg".equals(stringExtra2)) {
-                        AutoPlayAllHook.WOKE.add(stringExtra);
-                        AutoPlayAllHook.log(context, "测试结束播放器: " + stringExtra);
-                        AutoPlayAllHook.releaseWoke(context, stringExtra, "测试结束播放器");
-                        AutoPlayAllHook.log(context, "测试结束播放器完成: " + stringExtra);
-                        return;
-                    }
-                    if ("coldtest".equals(stringExtra2)) {
-                        AutoPlayAllHook.forceStop(context, stringExtra, "冷启动测试");
-                        AutoPlayAllHook.log(context, "冷启动测试开始: " + stringExtra);
-                        long unused = AutoPlayAllHook.sWaitStartAt = SystemClock.elapsedRealtime();
-                        AutoPlayAllHook.access$1308();
-                        final ClassLoader classLoader2 = classLoader;
-                        if (AutoPlayAllHook.sHandler == null) {
-                            Handler unused2 = AutoPlayAllHook.sHandler = new Handler(Looper.getMainLooper());
-                        }
-                        AutoPlayAllHook.sHandler.postDelayed(new Runnable() { // from class: hun.mesh.carwithenhance.hook.AutoPlayAllHook.20.1
-                            @Override // java.lang.Runnable
-                            public void run() {
-                                try {
-                                    AutoPlayAllHook.wakeInBackground(context, stringExtra);
-                                    AutoPlayAllHook.startRetryLoop(classLoader2, stringExtra);
-                                } catch (Throwable th10) {
-                                    AutoPlayAllHook.logErr(context, "冷启动测试失败", th10);
-                                }
-                            }
-                        }, 1000L);
-                        return;
-                    }
-                    if ("carshim".equals(stringExtra2)) {
-                        try {
-                            AutoPlayAllHook.log(context, "模拟轮转: tag=" + XposedHelpers.callStaticMethod(XposedHelpers.findClass("com.carwith.launcher.ams.UCarFragmentManager", classLoader), "getFragmentTagFromPackageName", new Object[]{stringExtra}));
-                            XposedHelpers.callStaticMethod(XposedHelpers.findClass("com.carwith.common.utils.m", classLoader), "g", new Object[]{context, stringExtra});
-                            AutoPlayAllHook.log(context, "模拟流程完成: " + stringExtra);
-                            return;
-                        } catch (Throwable th10) {
-                            AutoPlayAllHook.logErr(context, "模拟失败", th10);
-                            return;
-                        }
-                    }
-                    AutoPlayAllHook.handle(stringExtra, classLoader);
-                }
-            }, new IntentFilter("hun.mesh.carwithenhance.action.TEST"));
-            log(null, "测试入口已注册");
-        } catch (Throwable th) {
-            logErr(null, "测试入口注册失败", th);
-        }
-    }
-
-    /* JADX INFO: Access modifiers changed from: private */
-    public static void dumpLyric(String str, ClassLoader classLoader) {
-        Context context = sAppCtx;
-        try {
-            MediaController mediaController = null;
-            for (MediaController mediaController2 : ((MediaSessionManager) context.getSystemService("media_session")).getActiveSessions(null)) {
-                if (mediaController2 != null && str.equals(mediaController2.getPackageName())) {
-                    mediaController = mediaController2;
-                    break;
-                }
-            }
-            if (mediaController == null) {
-                log(context, "[" + str + "] 没有活跃的媒体会话");
-                return;
-            }
-            MediaMetadata metadata = mediaController.getMetadata();
-            if (metadata == null) {
-                log(context, "[" + str + "] 媒体会话没有任何元数据");
-                return;
-            }
-            StringBuilder sb = new StringBuilder("[" + str + "] 元数据键: ");
-            Iterator<String> it = metadata.keySet().iterator();
-            while (it.hasNext()) {
-                sb.append(it.next()).append(' ');
-            }
-            log(context, sb.toString());
-            for (String str2 : metadata.keySet()) {
-                String lowerCase = str2.toLowerCase(Locale.US);
-                if (str2.startsWith("ucar.") || lowerCase.contains("lyric")) {
-                    log(context, "   " + str2 + " = " + quote(metadata.getString(str2)));
-                }
-            }
-        } catch (Throwable th) {
-            logErr(context, "读取歌词状态失败: " + str, th);
-        }
-    }
-
-    private static int length(Object obj) {
-        if (obj instanceof String) {
-            return ((String) obj).length();
-        }
-        return -1;
-    }
-
-    private static String quote(Object obj) {
-        if (!(obj instanceof String)) {
-            return "null";
-        }
-        String str = (String) obj;
-        return (str.length() > 40 ? new StringBuilder().append("\"").append(str.substring(0, 40)).append("...\"") : new StringBuilder().append("\"").append(str).append("\"")).toString();
-    }
-
-    /* JADX INFO: Access modifiers changed from: private */
     public static void releaseWoke(Context context, String str, String str2) {
         try {
             if (!WOKE.remove(str)) {
@@ -2062,6 +1912,13 @@ public class AutoPlayAllHook implements IHook {
         if (context == null || str == null || !sCarConnected || !str.equals(sResumedPkg)) {
             return false;
         }
+        if (str.equals(sWaitingPkg)) {
+            return false;
+        }
+        if (str.equals(sResumedPkg) && sLastResumeAt > 0
+                && SystemClock.elapsedRealtime() - sLastResumeAt < 30000L) {
+            return false;
+        }
         Long l = OWN_KILL_AT.get(str);
         return ((l != null && SystemClock.elapsedRealtime() - l.longValue() < 20000) || isProcessRunning(context, str) || hasSession(context, str)) ? false : true;
     }
@@ -2116,7 +1973,15 @@ public class AutoPlayAllHook implements IHook {
         if (!isEnabled(appContext)) {
             return;
         }
+        if (isMediaApp(classLoader, str)) {
+            saveLastOpenedMediaApp(appContext, str);
+        }
         markSessionMedia(str);
+        if (MediaPlaybackPolicy.shouldSuppressPlayback(
+                isPlaying(appContext, str), playingOtherMedia(appContext, str))) {
+            log(appContext, "其他音乐正在播放，跳过自动播放: " + str);
+            return;
+        }
         String strSelectedApp = selectedApp();
         if (strSelectedApp != null && strSelectedApp.length() > 0 && !strSelectedApp.equals(str) && !isProcessRunning(appContext, str) && !hasSession(appContext, str) && isMediaApp(classLoader, strSelectedApp)) {
             log(appContext, "CarWith 请求的 " + str + " 已结束，改用当前选中的 " + strSelectedApp);
@@ -2204,17 +2069,34 @@ public class AutoPlayAllHook implements IHook {
         }
     }
 
-    private static boolean playingOtherMedia(Context context, String str) {
+    private static boolean playingOtherMedia(Context context, String exclude) {
         try {
-            for (String str2 : activeSessionPackages(context)) {
-                if (!str2.equals(str) && isMediaApp(sCl, str2) && isPlaying(context, str2)) {
+            MediaSessionManager manager =
+                    (MediaSessionManager) context.getSystemService("media_session");
+            if (manager == null) {
+                return false;
+            }
+            List<MediaController> sessions = manager.getActiveSessions(null);
+            if (sessions == null) {
+                return false;
+            }
+            for (MediaController controller : sessions) {
+                if (controller == null) {
+                    continue;
+                }
+                String pkg = controller.getPackageName();
+                if (pkg == null || pkg.equals(exclude) || !isMediaApp(sCl, pkg)) {
+                    continue;
+                }
+                PlaybackState state = controller.getPlaybackState();
+                if (state != null && state.getState() == PlaybackState.STATE_PLAYING) {
                     return true;
                 }
             }
-            return false;
         } catch (Throwable th) {
-            return false;
+            logErr(context, "读取其他播放器状态失败", th);
         }
+        return false;
     }
 
     private static void learnCurrentMedia(String str) {
@@ -2482,9 +2364,10 @@ public class AutoPlayAllHook implements IHook {
             return false;
         }
         try {
-            return context.getSharedPreferences(PREF_MEDIA_APP, 0).getBoolean(KEY_CARWITH_AUTOPLAY, true);
+            return context.getSharedPreferences(PREF_MEDIA_APP, 0)
+                    .getBoolean(KEY_CARWITH_AUTOPLAY, false);
         } catch (Throwable th) {
-            return true;
+            return false;
         }
     }
 
@@ -2567,6 +2450,15 @@ public class AutoPlayAllHook implements IHook {
                             Context context = AutoPlayAllHook.sAppCtx;
                             if (context != null) {
                                 if (AutoPlayAllHook.isEnabled(context)) {
+                                    if (MediaPlaybackPolicy.shouldSuppressPlayback(
+                                            AutoPlayAllHook.isPlaying(context, str),
+                                            AutoPlayAllHook.playingOtherMedia(context, str))) {
+                                        AutoPlayAllHook.log(context,
+                                                "其他音乐正在播放，停止对 " + str + " 的自动唤醒轮询");
+                                        AutoPlayAllHook.sRetryGen++;
+                                        AutoPlayAllHook.sWaitingPkg = null;
+                                        return;
+                                    }
                                     if (!AutoPlayAllHook.blockedByUserKill(context, str)) {
                                         if (!AutoPlayAllHook.blockedBySwitchDrop(str)) {
                                             if (!AutoPlayAllHook.isPlaying(context, str)) {

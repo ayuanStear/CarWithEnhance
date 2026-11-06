@@ -8,15 +8,21 @@ import org.junit.Test;
 
 public class HookConfigsTest {
     @Test
-    public void keepAliveSwitchIsExposedInSettings() {
-        boolean found = false;
+    public void removedSwitchesAreNotExposedInSettings() {
+        assertEquals(3, HookConfigs.getAllItems().size());
         for (HookItem item : HookConfigs.getAllItems()) {
-            if (HookConfigs.CARWITH_KEEPALIVE.key.equals(item.key)) {
-                found = true;
-                break;
-            }
+            assertFalse("hook_carwith_keepalive_enabled".equals(item.key));
+            assertFalse("hook_coldstart_antikill_enabled".equals(item.key));
         }
-        assertTrue(found);
+    }
+
+
+    @Test
+    public void autoplaySwitchDescribesOnlyQqPlaylistProtection() {
+        assertEquals("hook_autoplay_enabled", HookConfigs.AUTOPLAY.key);
+        assertEquals("QQ音乐完美续播", HookConfigs.AUTOPLAY.title);
+        assertTrue(HookConfigs.AUTOPLAY.subTitle.contains("巅峰音乐榜"));
+        assertFalse(HookConfigs.AUTOPLAY.title.contains("全应用"));
     }
 
     @Test

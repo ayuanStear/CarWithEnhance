@@ -13,47 +13,19 @@ import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
-import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 import hun.mesh.carwithenhance.config.HookConfigs;
 import hun.mesh.carwithenhance.utils.XLog;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 public class SystemServerHook {
     private static final String KEY_CONNECTED = "carwithenhance_is_connected";
-    private static final Set<String> PROTECTED_PACKAGES = new HashSet(Arrays.asList(
-            "com.baidu.carlife.xiaomi",
-            "com.autonavi.minimap",
-            "com.baidu.BaiduMap",
-            "com.tencent.qqmusic",
-            "com.netease.cloudmusic",
-            "com.kugou.android",
-            "cn.kuwo.player"));
-
     private static Context sSystemContext;
-    private static boolean sIsKeepAliveEnabled = HookConfigs.CARWITH_KEEPALIVE.defaultValue;
-    private static boolean sIsCarWithConnected;
     private static boolean sIsObserverRegistered;
     private static Handler sStopHandler;
     private static Runnable sPendingStop;
     private static long sPendingStopAt;
-
-    private static String getProcessName(Object processRecord) {
-        if (processRecord == null) {
-            return null;
-        }
-        try {
-            return (String) XposedHelpers.getObjectField(processRecord, "processName");
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
 
     private static Context getSystemContext() {
         Context context = sSystemContext;
@@ -82,76 +54,8 @@ public class SystemServerHook {
     }
 
     public static void hook(XC_LoadPackage.LoadPackageParam loadPackageParam) {
-        try {
-            XLog.i(">> [进程保护] 成功拦截系统底层 (system_server)");
-            hookProcessCleanerBase(loadPackageParam.classLoader);
-        } catch (Throwable th) {
-            XLog.e("❌ [进程保护] SystemServerHook 初始化异常", th);
-        }
-        try {
-            hookSubProcessAdjBindList(loadPackageParam.classLoader);
-        } catch (Throwable th) {
-            XLog.e("❌ [进程保护] 挂载 sSubProcessAdjBindList 失败", th);
-        }
+        XLog.i(">> [断连停止] 已加载 system_server Hook");
         scheduleObserverRegistration(0);
-    }
-
-    private static void hookProcessCleanerBase(ClassLoader classLoader) {
-        try {
-            XposedHelpers.findAndHookMethod(
-                    "com.android.server.am.ProcessCleanerBase", classLoader, "killOnce",
-                    new Object[]{"com.android.server.am.ProcessRecord", String.class, Integer.TYPE,
-                            Handler.class, Context.class, new XC_MethodHook() {
-                                @Override
-                                protected void beforeHookedMethod(MethodHookParam param) {
-                                    int level = ((Integer) param.args[2]).intValue();
-                                    String processName = getProcessName(param.args[0]);
-                                    if (level >= 102 && isKeepAliveConfigEnabled()
-                                            && isCarWithConnected() && processName != null) {
-                                        String packageName = processName.split(":")[0];
-                                        if (PROTECTED_PACKAGES.contains(packageName)) {
-                                            XLog.i(">> [进程保护] killOnce: [" + packageName
-                                                    + "], level=" + level + ", reason="
-                                                    + param.args[1] + " -> 已拦截");
-                                            param.setResult(null);
-                                        }
-                                    }
-                                }
-                            }});
-            XLog.i(">> [进程保护] Hook ProcessCleanerBase.killOnce 注册成功");
-        } catch (Throwable th) {
-            XLog.e("❌ [进程保护] Hook ProcessCleanerBase.killOnce 失败", th);
-        }
-    }
-
-    private static void hookSubProcessAdjBindList(ClassLoader classLoader) {
-    }
-
-    private static void injectProtectedProcs(Class<?> cls) {
-        try {
-            Map map = (Map) XposedHelpers.getStaticObjectField(cls, "sSubProcessAdjBindList");
-            if (map != null) {
-                map.put("com.tencent.qqmusic", new ArrayList(Arrays.asList(
-                        "com.tencent.qqmusic", "com.tencent.qqmusic:QQPlayerService")));
-                XLog.i(">> [进程保护] sSubProcessAdjBindList 注入成功: 已保护 QQmusic");
-            }
-        } catch (Throwable th) {
-            XLog.e(">> [进程保护] 注入 sSubProcessAdjBindList 数据失败", th);
-        }
-    }
-
-    private static boolean isCarWithConnected() {
-        if (!sIsObserverRegistered) {
-            registerObserverIfNeeded();
-        }
-        return sIsCarWithConnected;
-    }
-
-    private static boolean isKeepAliveConfigEnabled() {
-        if (!sIsObserverRegistered) {
-            registerObserverIfNeeded();
-        }
-        return sIsKeepAliveEnabled;
     }
 
     private static synchronized boolean registerObserverIfNeeded() {
@@ -164,22 +68,10 @@ public class SystemServerHook {
                 return false;
             }
             final ContentResolver resolver = systemContext.getContentResolver();
-            final Uri connectedUri = Settings.Global.getUriFor(KEY_CONNECTED);
-            final Uri keepAliveUri = Settings.Global.getUriFor(HookConfigs.CARWITH_KEEPALIVE.key);
             final Uri stopUri = Settings.Global.getUriFor(HookConfigs.DISCONNECT_STOP_AT_KEY);
             ContentObserver observer = new ContentObserver(new Handler(Looper.getMainLooper())) {
                 @Override
                 public void onChange(boolean selfChange, Uri uri) {
-                    if (uri == null || uri.equals(connectedUri)) {
-                        sIsCarWithConnected = Settings.Global.getInt(resolver, KEY_CONNECTED, 0) == 1;
-                    }
-                    if (uri == null || uri.equals(keepAliveUri)) {
-                        int keepAlive = Settings.Global.getInt(
-                                resolver, HookConfigs.CARWITH_KEEPALIVE.key, -1);
-                        if (keepAlive != -1) {
-                            sIsKeepAliveEnabled = keepAlive == 1;
-                        }
-                    }
                     if (uri == null || uri.equals(stopUri)) {
                         long stopAt = Settings.Global.getLong(
                                 resolver, HookConfigs.DISCONNECT_STOP_AT_KEY, 0L);
@@ -189,17 +81,14 @@ public class SystemServerHook {
                     }
                 }
             };
-            resolver.registerContentObserver(connectedUri, false, observer);
-            resolver.registerContentObserver(keepAliveUri, false, observer);
             resolver.registerContentObserver(stopUri, false, observer);
-            sIsCarWithConnected = Settings.Global.getInt(resolver, KEY_CONNECTED, 0) == 1;
-            int keepAlive = Settings.Global.getInt(
-                    resolver, HookConfigs.CARWITH_KEEPALIVE.key, -1);
-            if (keepAlive != -1) {
-                sIsKeepAliveEnabled = keepAlive == 1;
+            long pendingStopAt = Settings.Global.getLong(
+                    resolver, HookConfigs.DISCONNECT_STOP_AT_KEY, 0L);
+            if (pendingStopAt > 0L) {
+                scheduleDisconnectStop(pendingStopAt);
             }
             sIsObserverRegistered = true;
-            XLog.i(">> [进程保护] 全局状态与一次性停止任务监听器注册成功");
+            XLog.i(">> [断连停止] 一次性停止任务监听器注册成功");
             return true;
         } catch (Throwable th) {
             return false;
@@ -217,7 +106,7 @@ public class SystemServerHook {
             sStopHandler = new Handler(Looper.getMainLooper());
         }
         if (attempt >= 60) {
-            XLog.e(">> [进程保护] 全局状态监听器在启动阶段注册失败，已停止重试");
+            XLog.e(">> [断连停止] 全局状态监听器在启动阶段注册失败，已停止重试");
             return;
         }
         sStopHandler.postDelayed(new Runnable() {

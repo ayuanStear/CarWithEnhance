@@ -11,7 +11,6 @@ import hun.mesh.carwithenhance.hook.AutoPlayHook;
 import hun.mesh.carwithenhance.hook.CarLinkStateHook;
 import hun.mesh.carwithenhance.hook.IHook;
 import hun.mesh.carwithenhance.hook.QqMusicCustomPageHook;
-import hun.mesh.carwithenhance.hook.ScreenOnHook;
 import hun.mesh.carwithenhance.hook.SettingsHook;
 import hun.mesh.carwithenhance.hook.SystemServerHook;
 import hun.mesh.carwithenhance.utils.XLog;
@@ -35,8 +34,8 @@ public class MainHook implements IXposedHookLoadPackage {
                         Application application = (Application) methodHookParam.thisObject;
                         XLog.i(">> [CarWith Enhance] 成功获取 Application Context，初始化 DexKit...");
                         CarWithDexKitManager.INSTANCE.initAndResolve(loadPackageParam, application);
-                        IHook[] iHookArr = {new AutoPlayHook(), new AutoPlayAllHook(), new SettingsHook(), new ScreenOnHook(), new CarLinkStateHook(application), new QqMusicCustomPageHook()};
-                        for (int i = 0; i < 6; i++) {
+                        IHook[] iHookArr = {new AutoPlayHook(), new AutoPlayAllHook(), new SettingsHook(), new CarLinkStateHook(application), new QqMusicCustomPageHook()};
+                        for (int i = 0; i < iHookArr.length; i++) {
                             IHook iHook = iHookArr[i];
                             String simpleName = iHook.getClass().getSimpleName();
                             try {

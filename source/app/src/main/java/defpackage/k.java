@@ -25,7 +25,7 @@ public final class k extends r0 implements n0 {
             case GenericAutoPlayHooks.MEDIA_APP_OPEN /* 2 */:
                 b0 b0Var = (b0) obj;
                 return "(" + r.m(b0Var.c, "", m.c, 30) + ")" + c0.b(b0Var.d);
-            case GenericAutoPlayHooks.COLD_START_ANTI_KILL /* 3 */:
+            case 3:
                 return new z(((f0) obj).c);
             default:
                 return new b0(((t0) obj).c);
