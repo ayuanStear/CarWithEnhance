@@ -1,5 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" android:compileSdkVersion="36" android:compileSdkVersionCodename="16" package="hun.mesh.carwithenhance" platformBuildVersionCode="36" platformBuildVersionName="16">
+    <queries>
+        <intent>
+            <action android:name="android.media.browse.MediaBrowserService"/>
+        </intent>
+        <package android:name="com.netease.cloudmusic"/>
+        <package android:name="com.tencent.qqmusic"/>
+        <package android:name="com.luna.music"/>
+        <package android:name="com.kugou.android"/>
+        <package android:name="com.miui.player"/>
+        <package android:name="cn.kuwo.player"/>
+        <package android:name="cmccwm.mobilemusic"/>
+        <package android:name="com.baidu.netdisk"/>
+    </queries>
     <application android:extractNativeLibs="false" android:icon="@drawable/carwith_wifi_icon" android:label="CarWith Enhance" android:roundIcon="@drawable/carwith_wifi_icon">
         <meta-data android:name="xposedmodule" android:value="true"/>
         <meta-data android:name="xposeddescription" android:value="CarWith增强模块 by Mesh_Hun · 稳定性优化版"/>

@@ -4,8 +4,8 @@
 
 当前源码版本：
 
-- `versionCode`: 36
-- `versionName`: `2.3.5-qq-compat`
+- `versionCode`: 37
+- `versionName`: `2.3.6-runtime-cleanup`
 
 ## 当前断连行为
 
@@ -141,17 +141,25 @@ adb shell su -c "pm install -r -d --user 0 /data/local/tmp/CarWithEnhance.apk"
 - 目标播放器从回调对象及其内部类字段动态读取，兼容旧版和新版字段重命名。
 - 全应用续播仍通过 `MediaAutoPlayHelper.g(String, boolean)` 动态解析，并保留 `last_media_app` 持久化数据。
 
+## 运行期清理与兼容（2026-11-06）
+
+- `WakeReceiver` 不再通过模块进程查询音乐应用包信息，消除错误的“包查询失败”日志。
+- Manifest 增加 `MediaBrowserService` 查询声明，并为网易云、QQ 音乐、酷狗、咪咕、酷我、MIUI 音乐等保留显式包可见性。
+- 媒体服务绑定改为优先在 CarWith 主进程完成，兼容仍使用旧版 WakeReceiver 广播的历史版本。
+- 续播成功后直接移除所有尚未执行的 Handler 任务，不再出现“旧轮询已结束”刷屏，也避免无效后台唤醒。
+- 续播目标切换、用户终止、断开连接和开关关闭时都会同步取消旧重试任务。
+
 ## 功能删除（2026-11-06）
 
 - 已完整删除冷启动防误杀逻辑、system_server 进程保活逻辑、进程 adj 注入和受保护进程列表。
 - 已删除仅受进程保活开关控制的 `ScreenOnHook` 及对应 DexKit 目标解析。
 - 旧配置键 `hook_coldstart_antikill_enabled`、`hook_carwith_keepalive_enabled` 会在模块加载时从模块设置中清理，不再出现在设置界面。
 
-Release APK：`release/CarWithEnhance-2.3.5-qq-compat.apk`
+Release APK：`release/CarWithEnhance-2.3.6-runtime-cleanup.apk`
 
-SHA-256：`2A20D2F0399223652E7D7681F5C292C3EF9D51AC654FD9B26080C7847C51D436`
+SHA-256：`487C237D3CA5ED7B3D1AA4C628906752DE0503DC7170EA549ABA56CF032D1786`
 
-自检报告：[docs/releases/2026-11-06-carwith-enhance-2.3.5.md](docs/releases/2026-11-06-carwith-enhance-2.3.5.md)
+自检报告：[docs/releases/2026-11-06-carwith-enhance-2.3.6.md](docs/releases/2026-11-06-carwith-enhance-2.3.6.md)
 
 ## QQ 音乐定制页（2026-11-06）
 

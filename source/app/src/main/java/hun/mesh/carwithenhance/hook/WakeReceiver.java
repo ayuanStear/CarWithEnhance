@@ -3,7 +3,6 @@ package hun.mesh.carwithenhance.hook;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 
 public class WakeReceiver extends BroadcastReceiver {
     public static final String ACTION = "hun.mesh.carwithenhance.action.WAKE";
@@ -18,11 +17,6 @@ public class WakeReceiver extends BroadcastReceiver {
         if (packageName == null || packageName.isEmpty() || packageName.contains(":")) {
             AutoPlayAllHook.log(context, "WakeReceiver 忽略无效包名: " + packageName);
             return;
-        }
-        try {
-            context.getPackageManager().getPackageInfo(packageName, 0);
-        } catch (PackageManager.NameNotFoundException e) {
-            AutoPlayAllHook.log(context, "WakeReceiver 包查询失败，继续尝试唤醒: " + packageName);
         }
         AutoPlayAllHook.setAppContext(context);
         String mode = intent.getStringExtra("mode");

@@ -116,6 +116,7 @@ public class AutoPlayAllHook implements IHook {
     private static volatile boolean sResumeInFlight;
     private static volatile String sResumedPkg;
     private static volatile long sRetryGen;
+    private static final Set<Runnable> sPendingRetryTasks = ConcurrentHashMap.newKeySet();
     private static volatile String sSelectedApp;
     private static volatile String sPlayingPkg;
     private static volatile Set<String> sExperiencePackages = Collections.emptySet();
@@ -164,10 +165,24 @@ public class AutoPlayAllHook implements IHook {
         return isForeground(context, str) || isPlaying(context, str);
     }
 
-    static /* synthetic */ long access$1308() {
-        long j = sRetryGen;
-        sRetryGen = 1 + j;
-        return j;
+    static /* synthetic */ void access$1308() {
+        cancelRetryTasks();
+    }
+
+    private static void cancelRetryTasks() {
+        sRetryGen = sRetryGen + 1;
+        List<Runnable> pending;
+        synchronized (sPendingRetryTasks) {
+            pending = new ArrayList<>(sPendingRetryTasks);
+            sPendingRetryTasks.clear();
+        }
+        Handler handler = sHandler;
+        if (handler != null) {
+            for (Runnable task : pending) {
+                handler.removeCallbacks(task);
+            }
+        }
+        sWaitingPkg = null;
     }
 
     static {
@@ -1102,7 +1117,7 @@ public class AutoPlayAllHook implements IHook {
                 WOKE.add(str);
                 sActiveWokePkg = str;
                 sendMediaButton(context, str);
-                requestModuleBind(context, str);
+                bindBrowseService(context, str);
             }
         } catch (Throwable th) {
         }
@@ -1175,7 +1190,7 @@ public class AutoPlayAllHook implements IHook {
         sCurrentMediaPkg = null;
         sWaitingPkg = null;
         sLastSelectPkg = null;
-        sRetryGen++;
+        cancelRetryTasks();
         USER_KILLED.clear();
         OWN_KILL_AT.clear();
         SWITCH_DROPPED.clear();
@@ -1239,7 +1254,7 @@ public class AutoPlayAllHook implements IHook {
                     sActiveWokePkg = lastUsedMediaApp;
                     sendMediaButton(context, lastUsedMediaApp);
                     startPlayerService(context, lastUsedMediaApp);
-                    requestModuleBind(context, lastUsedMediaApp);
+                    bindBrowseService(context, lastUsedMediaApp);
                     startRetryLoop(sCl, lastUsedMediaApp);
                     return;
                 }
@@ -1583,7 +1598,7 @@ public class AutoPlayAllHook implements IHook {
         sActiveWokePkg = null;
         SESSION_MEDIA.clear();
         WOKE.clear();
-        sRetryGen++;
+        cancelRetryTasks();
         log(null, "连接已断开，仅复位续播状态");
     }
 
@@ -1884,7 +1899,7 @@ public class AutoPlayAllHook implements IHook {
         ArrayList arrayList = new ArrayList(WOKE);
         sActiveWokePkg = null;
         sLastAcceptedPkg = null;
-        sRetryGen++;
+        cancelRetryTasks();
         Iterator it = arrayList.iterator();
         while (it.hasNext()) {
             releaseWoke(context, (String) it.next(), str);
@@ -1989,7 +2004,7 @@ public class AutoPlayAllHook implements IHook {
         }
         String str2 = sLastAcceptedPkg;
         if (str2 == null || !str2.equals(str)) {
-            sRetryGen++;
+            cancelRetryTasks();
             sLastAcceptedPkg = str;
             rememberUsedMediaApp(classLoader, str);
             String str3 = sActiveWokePkg;
@@ -2042,7 +2057,7 @@ public class AutoPlayAllHook implements IHook {
     public static void startRetryLoop(ClassLoader classLoader, String str) {
         boolean z;
         boolean z2;
-        sRetryGen++;
+        cancelRetryTasks();
         long j = sRetryGen;
         sWaitingPkg = str;
         sWaitStartAt = SystemClock.elapsedRealtime();
@@ -2113,7 +2128,6 @@ public class AutoPlayAllHook implements IHook {
         boolean zStartPlayerService = startPlayerService(context, str);
         boolean zPlayViaSession = playViaSession(context, str);
         bindBrowseService(context, str);
-        requestModuleBind(context, str);
         learnCurrentMedia(str);
         if (!zIsProcessRunning) {
             WOKE.add(str);
@@ -2218,18 +2232,6 @@ public class AutoPlayAllHook implements IHook {
     }
 
     /* JADX INFO: Access modifiers changed from: private */
-    public static void requestModuleBind(Context context, String str) {
-        try {
-            Intent intent = new Intent(WakeReceiver.ACTION);
-            intent.setComponent(new ComponentName(BuildConfig.APPLICATION_ID, "hun.mesh.carwithenhance.hook.WakeReceiver"));
-            intent.putExtra(WakeReceiver.EXTRA_PKG, str);
-            intent.addFlags(285212672);
-            context.sendBroadcast(intent);
-        } catch (Throwable th) {
-            logErr(context, "请求后台绑定失败: " + str, th);
-        }
-    }
-
     private static boolean dispatchMediaPauseKey(Context context) {
         try {
             AudioManager audioManager = (AudioManager) context.getSystemService("audio");
@@ -2437,84 +2439,87 @@ public class AutoPlayAllHook implements IHook {
         return false;
     }
 
-    private static void schedule(final ClassLoader classLoader, final String str, long j, final long j2, final boolean z, final boolean z2) {
+    private static void schedule(final ClassLoader classLoader, final String str, long delay,
+            final long generation, final boolean allowWake, final boolean finalAttempt) {
         try {
             if (sHandler == null) {
                 sHandler = new Handler(Looper.getMainLooper());
             }
-            sHandler.postDelayed(new Runnable() { // from class: hun.mesh.carwithenhance.hook.AutoPlayAllHook.22
-                @Override // java.lang.Runnable
+            final Runnable retryTask = new Runnable() {
+                @Override
                 public void run() {
+                    synchronized (sPendingRetryTasks) {
+                        sPendingRetryTasks.remove(this);
+                    }
+                    if (generation != sRetryGen) {
+                        return;
+                    }
                     try {
-                        if (j2 == AutoPlayAllHook.sRetryGen) {
-                            Context context = AutoPlayAllHook.sAppCtx;
-                            if (context != null) {
-                                if (AutoPlayAllHook.isEnabled(context)) {
-                                    if (MediaPlaybackPolicy.shouldSuppressPlayback(
-                                            AutoPlayAllHook.isPlaying(context, str),
-                                            AutoPlayAllHook.playingOtherMedia(context, str))) {
-                                        AutoPlayAllHook.log(context,
-                                                "其他音乐正在播放，停止对 " + str + " 的自动唤醒轮询");
-                                        AutoPlayAllHook.sRetryGen++;
-                                        AutoPlayAllHook.sWaitingPkg = null;
-                                        return;
-                                    }
-                                    if (!AutoPlayAllHook.blockedByUserKill(context, str)) {
-                                        if (!AutoPlayAllHook.blockedBySwitchDrop(str)) {
-                                            if (!AutoPlayAllHook.isPlaying(context, str)) {
-                                                boolean zIsProcessRunning = AutoPlayAllHook.isProcessRunning(context, str);
-                                                boolean zHasSession = AutoPlayAllHook.hasSession(context, str);
-                                                if (!zIsProcessRunning && !AutoPlayAllHook.isPlaying(context, str)) {
-                                                    if (z || zHasSession) {
-                                                        AutoPlayAllHook.log(context, "等待 " + str + " 启动，补一次唤醒");
-                                                        AutoPlayAllHook.sendMediaButton(context, str);
-                                                        AutoPlayAllHook.startPlayerService(context, str);
-                                                        AutoPlayAllHook.playViaSession(context, str);
-                                                        AutoPlayAllHook.requestModuleBind(context, str);
-                                                    }
-                                                    if (z2) {
-                                                        AutoPlayAllHook.CANNOT_WAKE.add(str);
-                                                        AutoPlayAllHook.log(context, "后台无法拉起 " + str + "，断开时会保留它以免下次无法续播");
-                                                    }
-                                                    return;
-                                                }
-                                                AutoPlayAllHook.CANNOT_WAKE.remove(str);
-                                                String unused = AutoPlayAllHook.sResumedPkg = str;
-                                                if (zHasSession) {
-                                                    AutoPlayAllHook.log(context, "会话已恢复，立即续播 " + str);
-                                                } else {
-                                                    AutoPlayAllHook.log(context, "进程已起来，立即下发续播 " + str);
-                                                }
-                                                AutoPlayAllHook.resumeCarWith(classLoader, str);
-                                                return;
-                                            }
-                                            AutoPlayAllHook.access$1308();
-                                            String unused2 = AutoPlayAllHook.sWaitingPkg = null;
-                                            String unused3 = AutoPlayAllHook.sResumedPkg = str;
-                                            AutoPlayAllHook.log(context, "续播已生效，停止轮询 " + str);
-                                            return;
-                                        }
-                                        AutoPlayAllHook.access$1308();
-                                        String unused4 = AutoPlayAllHook.sWaitingPkg = null;
-                                        return;
-                                    }
-                                    AutoPlayAllHook.access$1308();
-                                    String unused5 = AutoPlayAllHook.sWaitingPkg = null;
-                                    return;
-                                }
-                                AutoPlayAllHook.access$1308();
-                                String unused6 = AutoPlayAllHook.sWaitingPkg = null;
-                                return;
-                            }
+                        Context context = sAppCtx;
+                        if (context == null) {
                             return;
                         }
-                        AutoPlayAllHook.log(null, "旧轮询已结束（目标变更或已续播）: " + str);
+                        if (!isEnabled(context)) {
+                            cancelRetryTasks();
+                            return;
+                        }
+                        if (MediaPlaybackPolicy.shouldSuppressPlayback(
+                                isPlaying(context, str), playingOtherMedia(context, str))) {
+                            log(context, "其他音乐正在播放，停止对 " + str + " 的自动唤醒轮询");
+                            cancelRetryTasks();
+                            return;
+                        }
+                        if (blockedByUserKill(context, str) || blockedBySwitchDrop(str)) {
+                            cancelRetryTasks();
+                            return;
+                        }
+                        if (!isPlaying(context, str)) {
+                            boolean processRunning = isProcessRunning(context, str);
+                            boolean hasSession = hasSession(context, str);
+                            if (!processRunning) {
+                                if (allowWake || hasSession) {
+                                    log(context, "等待 " + str + " 启动，补一次唤醒");
+                                    sendMediaButton(context, str);
+                                    startPlayerService(context, str);
+                                    playViaSession(context, str);
+                                    bindBrowseService(context, str);
+                                }
+                                if (finalAttempt) {
+                                    CANNOT_WAKE.add(str);
+                                    log(context, "后台无法拉起 " + str + "，断开时会保留它以免下次无法续播");
+                                    cancelRetryTasks();
+                                }
+                                return;
+                            }
+                            CANNOT_WAKE.remove(str);
+                            sResumedPkg = str;
+                            if (hasSession) {
+                                log(context, "会话已恢复，立即续播 " + str);
+                            } else {
+                                log(context, "进程已起来，立即下发续播 " + str);
+                            }
+                            resumeCarWith(classLoader, str);
+                            return;
+                        }
+                        cancelRetryTasks();
+                        sResumedPkg = str;
+                        log(context, "续播已生效，停止轮询 " + str);
                     } catch (Throwable th) {
-                        AutoPlayAllHook.logErr(AutoPlayAllHook.sAppCtx, "重试失败: " + str, th);
+                        logErr(sAppCtx, "重试失败: " + str, th);
                     }
                 }
-            }, j);
+            };
+            synchronized (sPendingRetryTasks) {
+                sPendingRetryTasks.add(retryTask);
+            }
+            if (!sHandler.postDelayed(retryTask, delay)) {
+                synchronized (sPendingRetryTasks) {
+                    sPendingRetryTasks.remove(retryTask);
+                }
+            }
         } catch (Throwable th) {
+            logErr(sAppCtx, "调度续播重试失败: " + str, th);
         }
     }
+
 }
