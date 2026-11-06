@@ -40,7 +40,7 @@
 - MEDIA_AUTO_PLAY -> `pa.a#g`
 - MEDIA_APP_OPEN -> `e5.t#j`
 - EXPERIENCE_TO_NORMAL -> `com.carwith.launcher.apps.AppsViewModel#q`
-- QQ 定制页 StartAppHelper Hook 注册成功
+- 历史版本曾包含 QQ 定制页 StartAppHelper Hook；2.3.9 起已删除，当前按官方启动逻辑执行
 - 5 个主 Hook 全部挂载完成
 - 未出现 `ClassNotFoundException: o0/u0` 或本模块 Hook 挂载失败
 

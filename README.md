@@ -4,8 +4,8 @@
 
 当前源码版本：
 
-- `versionCode`: 37
-- `versionName`: `2.3.6-runtime-cleanup`
+- `versionCode`: 40
+- `versionName`: `2.3.9-official-routing`
 
 ## 当前断连行为
 
@@ -155,14 +155,17 @@ adb shell su -c "pm install -r -d --user 0 /data/local/tmp/CarWithEnhance.apk"
 - 已删除仅受进程保活开关控制的 `ScreenOnHook` 及对应 DexKit 目标解析。
 - 旧配置键 `hook_coldstart_antikill_enabled`、`hook_carwith_keepalive_enabled` 会在模块加载时从模块设置中清理，不再出现在设置界面。
 
-Release APK：`release/CarWithEnhance-2.3.6-runtime-cleanup.apk`
+Release APK：`release/CarWithEnhance-2.3.9-official-routing.apk`
 
-SHA-256：`487C237D3CA5ED7B3D1AA4C628906752DE0503DC7170EA549ABA56CF032D1786`
+SHA-256：`8705A3941F569FE0B320A8608807BB6A2EFB54563BF1B0DC76C9EFD486849F77`
 
-自检报告：[docs/releases/2026-11-06-carwith-enhance-2.3.6.md](docs/releases/2026-11-06-carwith-enhance-2.3.6.md)
+自检报告：[docs/releases/2026-11-06-carwith-enhance-2.3.9.md](docs/releases/2026-11-06-carwith-enhance-2.3.9.md)
 
-## QQ 音乐定制页（2026-11-06）
+## 应用启动分流（2026-11-06）
 
-- QQ 音乐从应用列表菜单进入时也走 CarWith 1.0 定制页，与网易云一致。
-- 修复方式：拦截 y3.c.StartAppHelper 对 QQ 音乐的 embedding 启动，改走 UCarFragmentManager.jumpTo。
+- 已删除 `MediaCustomPageHook` / `MediaCustomPagePolicy` 及对应测试。
+- 已删除旧版 `QqMusicCustomPageHook`。
+- `MainHook` 不再挂载任何媒体定制页 Hook；模块不再拦截 `y3.a#b`、`y3.c#d/e`，也不主动调用 `UCarFragmentManager.jumpTo`。
+- 非体验应用点击按官方 `AppsRecyclerViewAdapter#E -> y3.a#b -> e5.t#j` 执行；体验应用按官方 `y3.c#d/e` 执行。
+- 续播、体验应用合并排序、断连停止、QQ音乐完美续播保护等功能保持不变。
 

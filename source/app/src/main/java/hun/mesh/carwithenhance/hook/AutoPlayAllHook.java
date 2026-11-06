@@ -119,6 +119,8 @@ public class AutoPlayAllHook implements IHook {
     private static final Set<Runnable> sPendingRetryTasks = ConcurrentHashMap.newKeySet();
     private static volatile String sSelectedApp;
     private static volatile String sPlayingPkg;
+    private static volatile String sLastPanelSyncPkg;
+    private static volatile long sLastPanelSyncAt;
     private static volatile Set<String> sExperiencePackages = Collections.emptySet();
     private static final Map<String, MediaController.Callback> SESSION_CALLBACKS = new ConcurrentHashMap();
     private static MediaSessionManager.OnActiveSessionsChangedListener sSessionListener;
@@ -145,7 +147,7 @@ public class AutoPlayAllHook implements IHook {
     });
     private static final long KILL_MIN_SETTLE_MS = 800;
     private static final long KILL_GRACE_MAX_WAIT_MS = 1200;
-    private static final long[] RETRY_DELAYS = {400, KILL_MIN_SETTLE_MS, KILL_GRACE_MAX_WAIT_MS, 1800, 2500, 3200, 4000, 5000, 6000, 8000, 10000, 13000, 16000, 20000, 24000};
+    private static final long[] RETRY_DELAYS = {250, 600, KILL_GRACE_MAX_WAIT_MS, 1800, 2500, 3200, 4000, 5000, 6000, 8000, 10000, 13000, 16000, 20000, 24000};
 
     /* JADX WARN: Unreachable blocks removed: 1, instructions: 1 */
     private static boolean isForeground(Context context, String str) {
@@ -868,13 +870,24 @@ public class AutoPlayAllHook implements IHook {
                 @Override
                 public void onPlaybackStateChanged(PlaybackState state) {
                     if (state != null && state.getState() == PlaybackState.STATE_PLAYING) {
-                        onMediaActuallyPlaying(pkg);
+                        onMediaActuallyPlaying(pkg, controller);
+                    }
+                }
+
+                @Override
+                public void onMetadataChanged(MediaMetadata metadata) {
+                    if (metadata != null) {
+                        onMediaMetadataChanged(pkg, controller);
                     }
                 }
             };
             try {
                 controller.registerCallback(callback, handler);
                 SESSION_CALLBACKS.put(callbackKey, callback);
+                PlaybackState currentState = controller.getPlaybackState();
+                if (currentState != null && currentState.getState() == PlaybackState.STATE_PLAYING) {
+                    onMediaActuallyPlaying(pkg, controller);
+                }
             } catch (Throwable ignored) {
             }
         }
@@ -909,12 +922,15 @@ public class AutoPlayAllHook implements IHook {
         return null;
     }
 
-    private static void onMediaActuallyPlaying(String pkg) {
-        final Context context = sAppCtx;
+    private static void onMediaActuallyPlaying(String pkg, MediaController controller) {
+        Context context = sAppCtx;
         if (context == null || pkg == null || !isMediaApp(sCl, pkg) || isNeverKill(pkg)) {
             return;
         }
         if (pkg.equals(sPlayingPkg)) {
+            if (sCarConnected) {
+                refreshCarWithMediaState(context, pkg, controller);
+            }
             return;
         }
         saveLastOpenedMediaApp(context, pkg);
@@ -927,6 +943,7 @@ public class AutoPlayAllHook implements IHook {
         sSelectedApp = pkg;
         rememberUsedMediaApp(sCl, pkg);
         markSessionMedia(pkg);
+        refreshCarWithMediaState(context, pkg, controller);
         updateDockIconToPlaying(pkg);
         if (previous != null && isMediaApp(sCl, previous) && !isNeverKill(previous)) {
             log(context, "检测到 " + pkg + " 真正开始播放，结束上一个播放器: " + previous);
@@ -936,6 +953,87 @@ public class AutoPlayAllHook implements IHook {
                     killPreviousPlaying(context, previous, pkg);
                 }
             });
+        }
+    }
+
+    private static void onMediaMetadataChanged(String pkg, MediaController controller) {
+        Context context = sAppCtx;
+        if (context == null || pkg == null || !sCarConnected
+                || !isMediaApp(sCl, pkg) || isNeverKill(pkg)) {
+            return;
+        }
+        PlaybackState state = controller.getPlaybackState();
+        if (state != null && state.getState() == PlaybackState.STATE_PLAYING) {
+            refreshCarWithMediaState(context, pkg, controller);
+        }
+    }
+
+    private static void refreshCarWithMediaState(
+            final Context context, final String pkg, final MediaController controller) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            if (sHandler == null) {
+                sHandler = new Handler(Looper.getMainLooper());
+            }
+            sHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    refreshCarWithMediaState(context, pkg, controller);
+                }
+            });
+            return;
+        }
+        long startedAt = SystemClock.elapsedRealtime();
+        if (pkg.equals(sLastPanelSyncPkg)
+                && startedAt - sLastPanelSyncAt < 150L) {
+            return;
+        }
+        sLastPanelSyncPkg = pkg;
+        sLastPanelSyncAt = startedAt;
+        Object mediaManager = null;
+        try {
+            Object sessionManager = XposedHelpers.callStaticMethod(
+                    XposedHelpers.findClass("xa.c", sCl), "h", new Object[0]);
+            Object compatibilityController = XposedHelpers.callMethod(
+                    sessionManager, "p", new Object[]{context, controller});
+            mediaManager = XposedHelpers.callStaticMethod(
+                    XposedHelpers.findClass("ma.a", sCl), "p", new Object[0]);
+            if (compatibilityController != null && mediaManager != null) {
+                XposedHelpers.callMethod(mediaManager, "c", new Object[]{compatibilityController});
+            }
+        } catch (Throwable th) {
+            logErr(context, "刷新 CarWith 媒体控制器失败: " + pkg, th);
+        }
+
+        try {
+            if (mediaManager == null) {
+                mediaManager = XposedHelpers.callStaticMethod(
+                        XposedHelpers.findClass("ma.a", sCl), "p", new Object[0]);
+            }
+            if (mediaManager != null) {
+                try {
+                    XposedHelpers.callMethod(mediaManager, "f", new Object[]{pkg});
+                } catch (Throwable ignored) {
+                }
+                Object current = XposedHelpers.callMethod(mediaManager, "o", new Object[0]);
+                if (!pkg.equals(current)) {
+                    XposedHelpers.setObjectField(mediaManager, "c", pkg);
+                }
+            }
+        } catch (Throwable th) {
+            logErr(context, "切换 CarWith 当前媒体应用失败: " + pkg, th);
+        }
+
+        try {
+            Object callbackHelper = XposedHelpers.callStaticMethod(
+                    XposedHelpers.findClass("pa.b", sCl), "e", new Object[0]);
+            if (callbackHelper != null) {
+                XposedHelpers.callMethod(callbackHelper, "d", new Object[]{pkg});
+                XposedHelpers.callMethod(callbackHelper, "h", new Object[]{pkg});
+            }
+            log(context, "播放器已播放，控制面板同步: " + pkg
+                    + " (" + (SystemClock.elapsedRealtime() - startedAt) + "ms)");
+        } catch (Throwable th) {
+            logErr(context, "通知 CarWith 媒体面板失败: " + pkg, th);
         }
     }
 
@@ -1198,10 +1296,18 @@ public class AutoPlayAllHook implements IHook {
         sResumedPkg = null;
         sInitialResumeDone = false;
         sPlayingPkg = null;
+        sLastPanelSyncPkg = null;
+        sLastPanelSyncAt = 0L;
         sCarConnected = true;
         log(null, "CarWith 已连接");
         if (sAppCtx != null) {
             sPlayingPkg = findPlayingPackage(sAppCtx, null);
+            if (sPlayingPkg != null) {
+                MediaController activeController = findController(sAppCtx, sPlayingPkg);
+                if (activeController != null) {
+                    refreshCarWithMediaState(sAppCtx, sPlayingPkg, activeController);
+                }
+            }
         }
         logAudioState(sAppCtx, "车机连接时");
         ClassLoader classLoader = sCl;
@@ -1253,11 +1359,17 @@ public class AutoPlayAllHook implements IHook {
                     WOKE.add(lastUsedMediaApp);
                     sActiveWokePkg = lastUsedMediaApp;
                     sendMediaButton(context, lastUsedMediaApp);
+                    sWaitStartAt = SystemClock.elapsedRealtime();
+                    sWaitingPkg = lastUsedMediaApp;
+                    resumeCarWith(sCl, lastUsedMediaApp);
                     startPlayerService(context, lastUsedMediaApp);
                     bindBrowseService(context, lastUsedMediaApp);
                     startRetryLoop(sCl, lastUsedMediaApp);
                     return;
                 }
+                sWaitStartAt = SystemClock.elapsedRealtime();
+                sWaitingPkg = lastUsedMediaApp;
+                resumeCarWith(sCl, lastUsedMediaApp);
                 startRetryLoop(sCl, lastUsedMediaApp);
             }
         } catch (Throwable th) {
@@ -2148,8 +2260,12 @@ public class AutoPlayAllHook implements IHook {
                     if (strGuessPlaybackService == null) {
                         return false;
                     }
+                    ComponentName component = new ComponentName(str, strGuessPlaybackService);
+                    if (isServiceAccessProtected(context, component)) {
+                        return false;
+                    }
                     Intent intent = new Intent();
-                    intent.setComponent(new ComponentName(str, strGuessPlaybackService));
+                    intent.setComponent(component);
                     intent.putExtra("is_started_by_foreground", true);
                     try {
                         context.startForegroundService(intent);
@@ -2286,7 +2402,10 @@ public class AutoPlayAllHook implements IHook {
         try {
             String str2 = KNOWN_SERVICES.get(str);
             if (str2 != null) {
-                connect(context, new ComponentName(str, str2));
+                ComponentName knownComponent = new ComponentName(str, str2);
+                if (!isServiceAccessProtected(context, knownComponent)) {
+                    connect(context, knownComponent);
+                }
             }
             PackageManager packageManager = context.getPackageManager();
             Intent intent = new Intent(BROWSE_ACTION);
@@ -2298,14 +2417,33 @@ public class AutoPlayAllHook implements IHook {
                 while (it.hasNext()) {
                     ServiceInfo serviceInfo = it.next().serviceInfo;
                     if (serviceInfo != null) {
+                        ComponentName component = new ComponentName(
+                                serviceInfo.packageName, serviceInfo.name);
+                        if (isServiceAccessProtected(context, component)) {
+                            continue;
+                        }
                         log(context, "  候选: " + serviceInfo.name + " exported=" + serviceInfo.exported);
-                        connect(context, new ComponentName(serviceInfo.packageName, serviceInfo.name));
+                        connect(context, component);
                         return;
                     }
                 }
             }
         } catch (Throwable th) {
             logErr(context, "后台绑定媒体服务失败: " + str, th);
+        }
+    }
+
+    private static boolean isServiceAccessProtected(
+            Context context, ComponentName componentName) {
+        try {
+            ServiceInfo serviceInfo = context.getPackageManager()
+                    .getServiceInfo(componentName, 0);
+            String permission = serviceInfo == null ? null : serviceInfo.permission;
+            return permission != null && !permission.isEmpty()
+                    && context.checkSelfPermission(permission)
+                    != PackageManager.PERMISSION_GRANTED;
+        } catch (Throwable ignored) {
+            return false;
         }
     }
 
