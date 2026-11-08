@@ -11,7 +11,7 @@
 | `testDebugUnitTest` | passed |
 | `assembleRelease` | passed |
 | APK v2 signature | verified |
-| Release build | 2.4.3, versionCode 46 |
+| Release build | 2.4.4, versionCode 47 |
 
 ## Device validation
 
@@ -30,6 +30,7 @@ Observed behavior:
 - Disabling `hook_precise_60fps_enabled` removed all pacing hooks after restart.
 - A diagnostic 60 FPS trace produced 59-61 frames per second, with a
   `16.6674ms` mean interval and `0.5678ms` standard deviation.
+- LSPosed displays QQ Music (`com.tencent.qqmusic`) with the `推荐应用` label.
 
 ## Switch-player toggle
 
@@ -44,11 +45,11 @@ The final real-car A-to-B player switch remains the hardware validation step for
 ## Release artifact
 
 ```text
-releases/CarWithEnhance-2.4.3-precise-60fps.apk
+releases/CarWithEnhance-2.4.4-qqmusic-recommended.apk
 ```
 
 SHA-256:
 
 ```text
-5D97B3F77F03223909CA257A486DB0AADE09E9A324EC2DCDD427D9A1131B3CF5
+D6EB8507ACA095CCB69E928EBF21936881E9F970F1584FB1DE4B2E28974DA069
 ```

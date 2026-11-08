@@ -57,6 +57,7 @@ Enable all of these in LSPosed:
 com.miui.carlink
 android
 com.baidu.carlife.xiaomi
+com.tencent.qqmusic
 ```
 
 After installing or updating, restart CarLife/CarWith and reconnect the vehicle.

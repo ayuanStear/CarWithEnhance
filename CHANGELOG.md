@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.4 - 2026-11-09
+
+- Added QQ Music to LSPosed's recommended module scopes.
+
 ## 2.4.3 - 2026-11-09
 
 - Added a CarLife process scope for precise frame scheduling.

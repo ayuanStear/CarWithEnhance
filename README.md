@@ -5,8 +5,8 @@ CarWith Enhance is an Xposed/LSPosed module for Xiaomi CarWith. It focuses on me
 Current release:
 
 ```text
-versionCode: 46
-versionName: 2.4.3-precise-60fps
+versionCode: 47
+versionName: 2.4.4-qqmusic-recommended
 package: hun.mesh.carwithenhance
 ```
 
@@ -20,6 +20,7 @@ package: hun.mesh.carwithenhance
 - Restores CarWith's original frame-rate menu and mapping: setting index `3` means 60 FPS.
 - Precise CarLife 60 FPS pacing using nanosecond deadlines and fixed-rate encoder Surface hints.
 - Menu switch: `精确60FPS帧调度`, enabled by default.
+- QQ Music is listed as a recommended LSPosed scope.
 - Safe MediaSession callback lifecycle and stale-controller cleanup.
 - Disconnect cleanup that selects one current media target.
 - Verified system-context write for the one-key-clean resume suppression.
@@ -41,6 +42,7 @@ When disabled, the previous player process is preserved and only automatic switc
 - CarWith scope: `com.miui.carlink`
 - system_server scope: `android`
 - CarLife scope: `com.baidu.carlife.xiaomi`
+- QQ Music scope: `com.tencent.qqmusic`
 
 ## Build
 
@@ -59,20 +61,21 @@ app/build/outputs/apk/release/app-release.apk
 The prebuilt release is available at:
 
 ```text
-releases/CarWithEnhance-2.4.3-precise-60fps.apk
+releases/CarWithEnhance-2.4.4-qqmusic-recommended.apk
 ```
 
 SHA-256:
 
 ```text
-5D97B3F77F03223909CA257A486DB0AADE09E9A324EC2DCDD427D9A1131B3CF5
+D6EB8507ACA095CCB69E928EBF21936881E9F970F1584FB1DE4B2E28974DA069
 ```
 
 ## Installation
 
 1. Install the APK with `adb install -r` or a file manager.
 2. Enable the module in LSPosed.
-3. Select `com.miui.carlink`, `android`, and `com.baidu.carlife.xiaomi` scopes.
+3. Select `com.miui.carlink`, `android`, `com.baidu.carlife.xiaomi`, and
+   `com.tencent.qqmusic` recommended scopes.
 4. Restart CarLife/CarWith and reconnect the vehicle.
 
 ## Documentation
