@@ -11,6 +11,7 @@
 | `testDebugUnitTest` | passed |
 | `assembleRelease` | passed |
 | APK v2 signature | verified |
+| Frame-rate restoration build | 2.4.2, versionCode 45 |
 
 ## Device validation
 
@@ -37,11 +38,11 @@ The final real-car A-to-B player switch remains the hardware validation step for
 ## Release artifact
 
 ```text
-releases/CarWithEnhance-2.4.1-switch-kill-toggle.apk
+releases/CarWithEnhance-2.4.2-restore-60fps.apk
 ```
 
 SHA-256:
 
 ```text
-1BC43F04D5604A3627380FD6766EF9C267BC6CEAE418E2E1B69C655BD14E115F
+16A233432E61249BA9542E4C453D903658AEA652241D9018F75FB81EA024E598
 ```

@@ -5,8 +5,8 @@ CarWith Enhance is an Xposed/LSPosed module for Xiaomi CarWith. It focuses on me
 Current release:
 
 ```text
-versionCode: 44
-versionName: 2.4.1-switch-kill-toggle
+versionCode: 45
+versionName: 2.4.2-restore-60fps
 package: hun.mesh.carwithenhance
 ```
 
@@ -17,6 +17,7 @@ package: hun.mesh.carwithenhance
 - Request-scoped correction for transient custom media page routing failures.
 - Progress-driven lyric clock for CarWith custom media card views.
 - Menu switch: `切换播放器播放后结束上个进程`.
+- Restores CarWith's original frame-rate menu and mapping: setting index `3` means 60 FPS.
 - Safe MediaSession callback lifecycle and stale-controller cleanup.
 - Disconnect cleanup that selects one current media target.
 - Verified system-context write for the one-key-clean resume suppression.
@@ -55,13 +56,13 @@ app/build/outputs/apk/release/app-release.apk
 The prebuilt release is available at:
 
 ```text
-releases/CarWithEnhance-2.4.1-switch-kill-toggle.apk
+releases/CarWithEnhance-2.4.2-restore-60fps.apk
 ```
 
 SHA-256:
 
 ```text
-1BC43F04D5604A3627380FD6766EF9C267BC6CEAE418E2E1B69C655BD14E115F
+16A233432E61249BA9542E4C453D903658AEA652241D9018F75FB81EA024E598
 ```
 
 ## Installation
@@ -78,6 +79,7 @@ SHA-256:
 - [Architecture and implementation](docs/IMPLEMENTATION.md)
 - [Verification](docs/VERIFICATION.md)
 - [Switch-player kill option](docs/SWITCH-PLAYER-KILL-TOGGLE.md)
+- [Frame-rate restoration](docs/FRAME-RATE-RESTORATION.md)
 
 ## Repository scope
 

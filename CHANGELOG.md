@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.2 - 2026-11-08
+
+- Removed the injected 50 FPS menu option.
+- Removed all custom frame-rate conversion hooks.
+- Restored CarWith's native mapping: setting index `3` means 60 FPS.
+- Revalidated the 1920x1080 car virtual display at a 60 Hz refresh configuration.
+
 ## 2.4.1 - 2026-11-08
 
 - Added the `切换播放器播放后结束上个进程` menu switch.
