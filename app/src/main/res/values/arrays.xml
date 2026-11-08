@@ -3,5 +3,6 @@
     <string-array name="lsposed_scopes">
         <item>com.miui.carlink</item>
         <item>android</item>
+        <item>com.baidu.carlife.xiaomi</item>
     </string-array>
 </resources>

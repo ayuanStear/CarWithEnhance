@@ -35,12 +35,18 @@ public final class HookConfigs {
                     + "若音乐应用在前台或正在播放则跳过；"
                     + "下次蓝牙连接仍由 CarWith 官方接收器自动唤醒",
             true);
+    public static final HookItem PRECISE_60FPS = new HookItem(
+            "hook_precise_60fps_enabled",
+            "精确60FPS帧调度",
+            "修正CarLife 16ms整数排程导致的62.5FPS超速，减少编码背压与顿帧",
+            true);
 
     private static final List<HookItem> ALL_ITEMS = Collections.unmodifiableList(Arrays.asList(
             AUTOPLAY,
             EXPERIENCE,
             SWITCH_PLAYER_KILL_PREVIOUS,
-            DISCONNECT_KILL_MUSIC));
+            DISCONNECT_KILL_MUSIC,
+            PRECISE_60FPS));
 
     private HookConfigs() {
     }
