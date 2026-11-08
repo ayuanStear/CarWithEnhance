@@ -56,6 +56,17 @@ public final class FramePacerPolicy {
         return fps == 60 ? 17 : 1_000 / fps;
     }
 
+    public static long frameStartNanos(long nowNanos, long elapsedMillis) {
+        if (elapsedMillis <= 0L) {
+            return nowNanos;
+        }
+        if (elapsedMillis > Long.MAX_VALUE / NANOS_PER_MILLI) {
+            return 0L;
+        }
+        long elapsedNanos = elapsedMillis * NANOS_PER_MILLI;
+        return Math.max(0L, nowNanos - elapsedNanos);
+    }
+
     private static void validateFps(int fps) {
         if (fps < 15 || fps > 60) {
             throw new IllegalArgumentException("Unsupported frame rate: " + fps);

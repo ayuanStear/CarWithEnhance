@@ -8,6 +8,7 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 import hun.mesh.carwithenhance.dexkit.CarWithDexKitManager;
 import hun.mesh.carwithenhance.hook.AutoPlayAllHook;
 import hun.mesh.carwithenhance.hook.AutoPlayHook;
+import hun.mesh.carwithenhance.hook.CarLifeFramePacingHook;
 import hun.mesh.carwithenhance.hook.CarLinkStateHook;
 import hun.mesh.carwithenhance.hook.IHook;
 import hun.mesh.carwithenhance.hook.LyricProgressHook;
@@ -58,6 +59,21 @@ public class MainHook implements IXposedHookLoadPackage {
                         XLog.i(">> [CarWith Enhance] 所有优化子模块全部挂载处理完成！");
                     }
                 }});
+                break;
+            case "com.baidu.carlife.xiaomi":
+                XLog.i(">> [CarWith Enhance] 成功拦截 CarLife, 开始挂载精确帧调度...");
+                XposedHelpers.findAndHookMethod(
+                        "android.app.Application",
+                        loadPackageParam.classLoader,
+                        "onCreate",
+                        new Object[]{new XC_MethodHook() {
+                            public void beforeHookedMethod(MethodHookParam methodHookParam) {
+                                Application application =
+                                        (Application) methodHookParam.thisObject;
+                                new CarLifeFramePacingHook(application)
+                                        .onHook(loadPackageParam.classLoader);
+                            }
+                        }});
                 break;
         }
     }
