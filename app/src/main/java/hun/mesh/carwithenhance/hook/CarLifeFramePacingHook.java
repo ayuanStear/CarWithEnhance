@@ -1,14 +1,11 @@
 package hun.mesh.carwithenhance.hook;
 
-import android.content.Context;
 import android.os.Build;
 import android.os.SystemClock;
-import android.provider.Settings;
 import android.view.Surface;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
-import hun.mesh.carwithenhance.config.HookConfigs;
 import hun.mesh.carwithenhance.dexkit.CarLifeFrameTargets;
 import hun.mesh.carwithenhance.policy.FramePacerPolicy;
 import hun.mesh.carwithenhance.utils.XLog;
@@ -17,26 +14,15 @@ import java.lang.reflect.Field;
 public final class CarLifeFramePacingHook implements IHook {
     private static final int MSG_RENDER_DISPLAY = 2;
 
-    private final Context appContext;
     private final FramePacerPolicy pacer = new FramePacerPolicy();
-    private volatile boolean enabled;
     private volatile int requestedFps;
     private volatile boolean preciseRendererInstalled;
     private volatile boolean degradedStateLogged;
 
-    public CarLifeFramePacingHook(Context appContext) {
-        this.appContext = appContext;
-    }
-
     @Override
     public void onHook(ClassLoader classLoader) {
-        enabled = isEnabled(appContext);
-        if (!enabled) {
-            XLog.i("[CarLifePacing] 精确帧调度已关闭，不安装 Hook");
-            return;
-        }
         final CarLifeFrameTargets targets = CarLifeFrameTargets.resolve(classLoader);
-        XLog.i("[CarLifePacing] Hook 启用状态=" + enabled + ", " + targets.describe());
+        XLog.i("[CarLifePacing] 60FPS自动精确调度已启用, " + targets.describe());
 
         installFrameRateHook(targets);
         installConnectionHook(targets);
@@ -57,9 +43,6 @@ public final class CarLifeFramePacingHook implements IHook {
                         return;
                     }
                     updateRequestedFps((Integer) param.args[0]);
-                    if (!enabled) {
-                        return;
-                    }
                     if (requestedFps == 60) {
                         applySurfaceFrameRate(targets, param.thisObject);
                         if (!preciseRendererInstalled) {
@@ -81,7 +64,7 @@ public final class CarLifeFramePacingHook implements IHook {
             XposedBridge.hookMethod(targets.handleConnectEstablished, new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
-                    if (enabled && requestedFps == 60) {
+                    if (requestedFps == 60) {
                         applySurfaceFrameRate(targets, param.thisObject);
                     }
                 }
@@ -100,7 +83,7 @@ public final class CarLifeFramePacingHook implements IHook {
             XposedBridge.hookMethod(targets.renderDisplayMsg, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
-                    if (!FramePacerPolicy.shouldOverrideRenderer(enabled, requestedFps)) {
+                    if (!FramePacerPolicy.shouldOverrideRenderer(requestedFps)) {
                         return;
                     }
                     try {
@@ -140,7 +123,7 @@ public final class CarLifeFramePacingHook implements IHook {
         Surface surface = readSurface(targets, recorder);
         boolean hasValidSurface = surface != null && surface.isValid();
         if (!FramePacerPolicy.shouldApplySurfaceFrameRate(
-                enabled, requestedFps, Build.VERSION.SDK_INT, hasValidSurface)) {
+                requestedFps, Build.VERSION.SDK_INT, hasValidSurface)) {
             return;
         }
         try {
@@ -179,17 +162,6 @@ public final class CarLifeFramePacingHook implements IHook {
             return value instanceof Surface ? (Surface) value : null;
         } catch (Throwable ignored) {
             return null;
-        }
-    }
-
-    private static boolean isEnabled(Context context) {
-        try {
-            return Settings.Global.getInt(
-                    context.getContentResolver(),
-                    HookConfigs.PRECISE_60FPS.key,
-                    1) == 1;
-        } catch (Throwable ignored) {
-            return true;
         }
     }
 

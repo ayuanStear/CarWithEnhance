@@ -65,13 +65,12 @@ public class FramePacerPolicyTest {
 
     @Test
     public void gatesProtectUnsupportedSchedulingAndSurface() {
-        assertTrue(FramePacerPolicy.shouldOverrideRenderer(true, 60));
-        assertFalse(FramePacerPolicy.shouldOverrideRenderer(false, 60));
-        assertFalse(FramePacerPolicy.shouldOverrideRenderer(true, 30));
-        assertTrue(FramePacerPolicy.shouldApplySurfaceFrameRate(true, 60, 30, true));
-        assertFalse(FramePacerPolicy.shouldApplySurfaceFrameRate(true, 60, 29, true));
-        assertFalse(FramePacerPolicy.shouldApplySurfaceFrameRate(true, 60, 30, false));
-        assertFalse(FramePacerPolicy.shouldApplySurfaceFrameRate(true, 30, 30, true));
+        assertTrue(FramePacerPolicy.shouldOverrideRenderer(60));
+        assertFalse(FramePacerPolicy.shouldOverrideRenderer(30));
+        assertTrue(FramePacerPolicy.shouldApplySurfaceFrameRate(60, 30, true));
+        assertFalse(FramePacerPolicy.shouldApplySurfaceFrameRate(60, 29, true));
+        assertFalse(FramePacerPolicy.shouldApplySurfaceFrameRate(60, 30, false));
+        assertFalse(FramePacerPolicy.shouldApplySurfaceFrameRate(30, 30, true));
     }
 
     @Test

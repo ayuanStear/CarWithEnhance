@@ -42,13 +42,13 @@ public final class FramePacerPolicy {
         initialized = false;
     }
 
-    public static boolean shouldOverrideRenderer(boolean enabled, int fps) {
-        return enabled && fps == 60;
+    public static boolean shouldOverrideRenderer(int fps) {
+        return fps == 60;
     }
 
     public static boolean shouldApplySurfaceFrameRate(
-            boolean enabled, int fps, int sdkInt, boolean hasValidSurface) {
-        return enabled && fps == 60 && sdkInt >= 30 && hasValidSurface;
+            int fps, int sdkInt, boolean hasValidSurface) {
+        return fps == 60 && sdkInt >= 30 && hasValidSurface;
     }
 
     public static boolean shouldResetForFrameRateChange(int previousFps, int nextFps) {

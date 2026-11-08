@@ -41,6 +41,11 @@ If CarWith briefly reports empty metadata, the previous song identity is retaine
 - the package is custom-page capable;
 - the user has not selected the native QQ Music page.
 
+Root-tab state is cached by media package, following the service-level cache
+used by QQ Music's `QPlayIPCService`. When the NetEase detail Fragment is
+popped and CarWith recreates its ViewPager, the selected root page is restored
+after the new adapter is attached.
+
 ## Lyric clock
 
 `LyricProgressHook` hooks structural `setCurrentProgress(long)` implementations. It scans the media view instance for a lyric control exposing `setCurrentLryByTime(long)` and forwards the same playback position on the UI thread.

@@ -22,16 +22,17 @@ The Xposed module now loads in the CarLife process and:
 - Replaces only 60 FPS rendering delays; native 30/20/15 FPS paths are unchanged.
 - Calls `Surface.setFrameRate(60, FRAME_RATE_COMPATIBILITY_FIXED_SOURCE)` on the
   encoder input Surface.
-- Exposes `精确60FPS帧调度` in the CarWith Enhance settings menu, enabled by
-  default.
+- Hides the obsolete `精确60FPS帧调度` switch from CarWith Enhance settings.
+- Automatically installs precise scheduling whenever CarLife selects 60 FPS.
 
-The setting is stored under:
+The legacy preference key remains readable for compatibility:
 
 ```text
 hook_precise_60fps_enabled
 ```
 
-Changing it takes effect after CarLife restarts or CarWith reconnects.
+It no longer controls whether pacing hooks are installed. Only the current
+CarLife target frame rate determines activation.
 
 ## Cross-Version Behavior
 

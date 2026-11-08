@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.4.6 - 2026-11-09
+
+- Hidden the obsolete `精确60FPS帧调度` switch from CarWith Enhance settings.
+- Automatic precise scheduling now activates whenever CarLife selects 60 FPS.
+- The legacy `hook_precise_60fps_enabled` preference remains readable for
+  compatibility but no longer controls whether pacing hooks are installed.
+- Preserved the 30/20/15 FPS scheduling paths without precise overrides.
+
+## 2.4.5 - 2026-11-09
+
+- Preserved the selected NetEase Cloud Music root tab when returning from a
+  secondary media list.
+- Restored the active tab after the host view pager rebuilds its fragment
+  adapter, avoiding the default return to `精彩推荐`.
+- Added policy tests for valid, missing, stale, and empty tab selections.
+
 ## 2.4.4 - 2026-11-09
 
 - Added QQ Music to LSPosed's recommended module scopes.

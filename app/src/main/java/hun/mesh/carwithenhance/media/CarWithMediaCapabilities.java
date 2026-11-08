@@ -172,6 +172,19 @@ public final class CarWithMediaCapabilities {
                 && (callbackNotify != null || callbackRebind != null);
     }
 
+    public String getCurrentMediaPackage() {
+        if (!isPanelReady()) {
+            return null;
+        }
+        try {
+            Object manager = mediaManagerSingleton.invoke(null);
+            Object value = mediaManagerCurrentPackage.get(manager);
+            return value instanceof String ? (String) value : null;
+        } catch (Throwable th) {
+            return null;
+        }
+    }
+
     public boolean isRouteReady() {
         return routeEntry != null && routeCapability != null;
     }

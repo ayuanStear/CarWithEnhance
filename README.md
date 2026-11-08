@@ -5,8 +5,8 @@ CarWith Enhance is an Xposed/LSPosed module for Xiaomi CarWith. It focuses on me
 Current release:
 
 ```text
-versionCode: 47
-versionName: 2.4.4-qqmusic-recommended
+versionCode: 49
+versionName: 2.4.6-auto-precise-60fps
 package: hun.mesh.carwithenhance
 ```
 
@@ -15,11 +15,12 @@ package: hun.mesh.carwithenhance
 - Snapshot-based media panel refresh for initial resume and same-package track changes.
 - Connection-scoped resume idempotence, preventing a player that is already playing from receiving another resume command.
 - Request-scoped correction for transient custom media page routing failures.
+- Restores the selected NetEase root tab after returning from a detail page.
 - Progress-driven lyric clock for CarWith custom media card views.
 - Menu switch: `切换播放器播放后结束上个进程`.
 - Restores CarWith's original frame-rate menu and mapping: setting index `3` means 60 FPS.
-- Precise CarLife 60 FPS pacing using nanosecond deadlines and fixed-rate encoder Surface hints.
-- Menu switch: `精确60FPS帧调度`, enabled by default.
+- Automatically applies precise CarLife pacing whenever 60 FPS is selected.
+- Uses nanosecond deadlines and fixed-rate encoder Surface hints without a user switch.
 - QQ Music is listed as a recommended LSPosed scope.
 - Safe MediaSession callback lifecycle and stale-controller cleanup.
 - Disconnect cleanup that selects one current media target.
@@ -61,13 +62,13 @@ app/build/outputs/apk/release/app-release.apk
 The prebuilt release is available at:
 
 ```text
-releases/CarWithEnhance-2.4.4-qqmusic-recommended.apk
+releases/CarWithEnhance-2.4.6-auto-precise-60fps.apk
 ```
 
 SHA-256:
 
 ```text
-D6EB8507ACA095CCB69E928EBF21936881E9F970F1584FB1DE4B2E28974DA069
+54D9B2F40F9204406F8DA887D72E5AF23EECFDB2CA238176501CE7A8B8BC0399
 ```
 
 ## Installation
@@ -87,6 +88,7 @@ D6EB8507ACA095CCB69E928EBF21936881E9F970F1584FB1DE4B2E28974DA069
 - [Switch-player kill option](docs/SWITCH-PLAYER-KILL-TOGGLE.md)
 - [Frame-rate restoration](docs/FRAME-RATE-RESTORATION.md)
 - [Precise 60 FPS pacing](docs/PRECISE-60FPS-PACING.md)
+- [NetEase root tab restore](docs/NETEASE-TAB-RESTORE.md)
 
 ## Repository scope
 

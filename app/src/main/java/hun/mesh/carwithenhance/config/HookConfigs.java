@@ -47,6 +47,11 @@ public final class HookConfigs {
             SWITCH_PLAYER_KILL_PREVIOUS,
             DISCONNECT_KILL_MUSIC,
             PRECISE_60FPS));
+    private static final List<HookItem> VISIBLE_ITEMS = Collections.unmodifiableList(Arrays.asList(
+            AUTOPLAY,
+            EXPERIENCE,
+            SWITCH_PLAYER_KILL_PREVIOUS,
+            DISCONNECT_KILL_MUSIC));
 
     private HookConfigs() {
     }
@@ -61,7 +66,7 @@ public final class HookConfigs {
     }
 
     public static List<HookItem> getAllItems() {
-        return ALL_ITEMS;
+        return VISIBLE_ITEMS;
     }
 
     public static int clampDelaySeconds(int seconds) {

@@ -10,19 +10,20 @@ import org.junit.Test;
 public class HookConfigsTest {
     @Test
     public void removedSwitchesAreNotExposedInSettings() {
-        assertEquals(5, HookConfigs.getAllItems().size());
+        assertEquals(4, HookConfigs.getAllItems().size());
         for (HookItem item : HookConfigs.getAllItems()) {
             assertFalse("hook_carwith_keepalive_enabled".equals(item.key));
             assertFalse("hook_coldstart_antikill_enabled".equals(item.key));
+            assertFalse("hook_precise_60fps_enabled".equals(item.key));
         }
     }
 
     @Test
-    public void precise60FpsPacingIsExposedAndDefaultsEnabled() {
+    public void precise60FpsPacingIsHiddenAndAutomatic() {
         assertEquals("hook_precise_60fps_enabled", HookConfigs.PRECISE_60FPS.key);
         assertTrue(HookConfigs.PRECISE_60FPS.defaultValue);
         assertNotNull(HookConfigs.findByKey("hook_precise_60fps_enabled"));
-        assertTrue(HookConfigs.getAllItems().contains(HookConfigs.PRECISE_60FPS));
+        assertFalse(HookConfigs.getAllItems().contains(HookConfigs.PRECISE_60FPS));
     }
 
     @Test

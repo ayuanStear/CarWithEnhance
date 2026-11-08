@@ -13,6 +13,7 @@ import hun.mesh.carwithenhance.hook.CarLinkStateHook;
 import hun.mesh.carwithenhance.hook.IHook;
 import hun.mesh.carwithenhance.hook.LyricProgressHook;
 import hun.mesh.carwithenhance.hook.MediaRouteHook;
+import hun.mesh.carwithenhance.hook.MediaTabSelectionHook;
 import hun.mesh.carwithenhance.hook.SettingsHook;
 import hun.mesh.carwithenhance.hook.SystemServerHook;
 import hun.mesh.carwithenhance.media.CarWithMediaCapabilities;
@@ -42,6 +43,7 @@ public class MainHook implements IXposedHookLoadPackage {
                                 new AutoPlayHook(),
                                 new AutoPlayAllHook(),
                                 new MediaRouteHook(),
+                                new MediaTabSelectionHook(),
                                 new LyricProgressHook(),
                                 new SettingsHook(),
                                 new CarLinkStateHook(application)
@@ -70,7 +72,7 @@ public class MainHook implements IXposedHookLoadPackage {
                             public void afterHookedMethod(MethodHookParam methodHookParam) {
                                 Application application =
                                         (Application) methodHookParam.thisObject;
-                                new CarLifeFramePacingHook(application)
+                                new CarLifeFramePacingHook()
                                         .onHook(loadPackageParam.classLoader);
                             }
                         }});
