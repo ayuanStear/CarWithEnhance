@@ -51,6 +51,10 @@ public final class FramePacerPolicy {
         return enabled && fps == 60 && sdkInt >= 30 && hasValidSurface;
     }
 
+    public static boolean shouldResetForFrameRateChange(int previousFps, int nextFps) {
+        return previousFps != nextFps;
+    }
+
     public static int fallbackIntervalMillis(int fps) {
         validateFps(fps);
         return fps == 60 ? 17 : 1_000 / fps;

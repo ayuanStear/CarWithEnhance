@@ -5,7 +5,7 @@
 | Check | Result |
 |---|---|
 | Unit suites | 11 |
-| Unit tests | 65 passed |
+| Unit tests | 66 passed |
 | Failures | 0 |
 | Errors | 0 |
 | `testDebugUnitTest` | passed |
@@ -50,5 +50,5 @@ releases/CarWithEnhance-2.4.3-precise-60fps.apk
 SHA-256:
 
 ```text
-D246AC8F27F92A80D999CAECE1935808C9BAC448C01C0EEDD811C48A28AAC23F
+5D97B3F77F03223909CA257A486DB0AADE09E9A324EC2DCDD427D9A1131B3CF5
 ```

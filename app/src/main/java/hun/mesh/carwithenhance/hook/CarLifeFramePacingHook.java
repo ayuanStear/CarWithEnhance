@@ -56,8 +56,7 @@ public final class CarLifeFramePacingHook implements IHook {
                             || !(param.args[0] instanceof Integer)) {
                         return;
                     }
-                    requestedFps = (Integer) param.args[0];
-                    pacer.reset();
+                    updateRequestedFps((Integer) param.args[0]);
                     if (!enabled) {
                         return;
                     }
@@ -192,6 +191,13 @@ public final class CarLifeFramePacingHook implements IHook {
         } catch (Throwable ignored) {
             return true;
         }
+    }
+
+    private synchronized void updateRequestedFps(int fps) {
+        if (FramePacerPolicy.shouldResetForFrameRateChange(requestedFps, fps)) {
+            pacer.reset();
+        }
+        requestedFps = fps;
     }
 
 }

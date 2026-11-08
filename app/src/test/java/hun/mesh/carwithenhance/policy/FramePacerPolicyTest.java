@@ -86,4 +86,12 @@ public class FramePacerPolicyTest {
     public void rejectsUnsupportedFrameRate() {
         new FramePacerPolicy().nextDelayMillis(10, 0L, 0L);
     }
+
+    @Test
+    public void resetOnlyWhenFrameRateActuallyChanges() {
+        assertTrue(FramePacerPolicy.shouldResetForFrameRateChange(0, 60));
+        assertFalse(FramePacerPolicy.shouldResetForFrameRateChange(60, 60));
+        assertTrue(FramePacerPolicy.shouldResetForFrameRateChange(60, 30));
+        assertTrue(FramePacerPolicy.shouldResetForFrameRateChange(30, 60));
+    }
 }

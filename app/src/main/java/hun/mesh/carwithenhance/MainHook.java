@@ -67,7 +67,7 @@ public class MainHook implements IXposedHookLoadPackage {
                         loadPackageParam.classLoader,
                         "onCreate",
                         new Object[]{new XC_MethodHook() {
-                            public void beforeHookedMethod(MethodHookParam methodHookParam) {
+                            public void afterHookedMethod(MethodHookParam methodHookParam) {
                                 Application application =
                                         (Application) methodHookParam.thisObject;
                                 new CarLifeFramePacingHook(application)

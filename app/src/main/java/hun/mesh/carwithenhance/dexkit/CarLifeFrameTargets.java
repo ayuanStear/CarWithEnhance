@@ -40,6 +40,15 @@ public final class CarLifeFrameTargets {
     }
 
     public static CarLifeFrameTargets resolve(ClassLoader classLoader) {
+        try {
+            return resolveInternal(classLoader);
+        } catch (Throwable th) {
+            XLog.e("[CarLifePacing] 目标解析异常，使用 DEGRADED_17MS", th);
+            return empty();
+        }
+    }
+
+    private static CarLifeFrameTargets resolveInternal(ClassLoader classLoader) {
         Class<?> recorderClass = findClass(RECORDER_CLASS, classLoader);
         Method changeFrameRate = findMethod(recorderClass, "changeFrameRate", int.class);
         if (changeFrameRate == null) {
@@ -74,6 +83,10 @@ public final class CarLifeFrameTargets {
                 renderDisplayMsg);
         XLog.i(targets.describe());
         return targets;
+    }
+
+    private static CarLifeFrameTargets empty() {
+        return new CarLifeFrameTargets(null, null, null, null, null, null, null);
     }
 
     public boolean hasPreciseRenderer() {
