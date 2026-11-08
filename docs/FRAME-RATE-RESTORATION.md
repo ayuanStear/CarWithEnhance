@@ -19,7 +19,9 @@ The current device still stores:
 user_setting_framerate=3
 ```
 
-After removing the custom hooks, this value is interpreted directly by CarWith as 60 FPS.
+After removing the custom hooks, this value is interpreted directly by CarWith
+as 60 FPS. Version 2.4.3 additionally corrects CarLife's integer-millisecond
+frame scheduling without changing the native frame-rate menu.
 
 ## Removed code
 
@@ -36,16 +38,18 @@ After removing the custom hooks, this value is interpreted directly by CarWith a
 - Render frame rate: `60.0`
 - Refresh-rate override: `60.0`
 - Startup log contains no `50FPS` menu or frame-rate conversion activity.
+- CarLife frame pacing resolves to `mode=PRECISE`.
+- Encoder input Surface is set to a fixed 60 FPS source in the 60 FPS mode.
 
 ## Release
 
 ```text
-versionCode: 45
-versionName: 2.4.2-restore-60fps
+versionCode: 46
+versionName: 2.4.3-precise-60fps
 ```
 
 APK SHA-256:
 
 ```text
-16A233432E61249BA9542E4C453D903658AEA652241D9018F75FB81EA024E598
+D246AC8F27F92A80D999CAECE1935808C9BAC448C01C0EEDD811C48A28AAC23F
 ```

@@ -4,14 +4,14 @@
 
 | Check | Result |
 |---|---|
-| Unit suites | 8 |
-| Unit tests | 51 passed |
+| Unit suites | 11 |
+| Unit tests | 65 passed |
 | Failures | 0 |
 | Errors | 0 |
 | `testDebugUnitTest` | passed |
 | `assembleRelease` | passed |
 | APK v2 signature | verified |
-| Frame-rate restoration build | 2.4.2, versionCode 45 |
+| Release build | 2.4.3, versionCode 46 |
 
 ## Device validation
 
@@ -24,6 +24,12 @@ Observed behavior:
 - A lyric view started advancing from the media progress position.
 - A second resume was skipped after the target was already playing.
 - DexKit capability discovery remained ready after a process restart using cached targets.
+- LSPosed loaded CarWith Enhance inside `com.baidu.carlife.xiaomi`.
+- CarLife pacing resolved `mode=PRECISE`.
+- The encoder input Surface logged a fixed 60 FPS rate in the 60 FPS mode.
+- Disabling `hook_precise_60fps_enabled` removed all pacing hooks after restart.
+- A diagnostic 60 FPS trace produced 59-61 frames per second, with a
+  `16.6674ms` mean interval and `0.5678ms` standard deviation.
 
 ## Switch-player toggle
 
@@ -38,11 +44,11 @@ The final real-car A-to-B player switch remains the hardware validation step for
 ## Release artifact
 
 ```text
-releases/CarWithEnhance-2.4.2-restore-60fps.apk
+releases/CarWithEnhance-2.4.3-precise-60fps.apk
 ```
 
 SHA-256:
 
 ```text
-16A233432E61249BA9542E4C453D903658AEA652241D9018F75FB81EA024E598
+D246AC8F27F92A80D999CAECE1935808C9BAC448C01C0EEDD811C48A28AAC23F
 ```

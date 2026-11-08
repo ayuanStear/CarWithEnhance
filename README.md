@@ -5,8 +5,8 @@ CarWith Enhance is an Xposed/LSPosed module for Xiaomi CarWith. It focuses on me
 Current release:
 
 ```text
-versionCode: 45
-versionName: 2.4.2-restore-60fps
+versionCode: 46
+versionName: 2.4.3-precise-60fps
 package: hun.mesh.carwithenhance
 ```
 
@@ -18,6 +18,8 @@ package: hun.mesh.carwithenhance
 - Progress-driven lyric clock for CarWith custom media card views.
 - Menu switch: `切换播放器播放后结束上个进程`.
 - Restores CarWith's original frame-rate menu and mapping: setting index `3` means 60 FPS.
+- Precise CarLife 60 FPS pacing using nanosecond deadlines and fixed-rate encoder Surface hints.
+- Menu switch: `精确60FPS帧调度`, enabled by default.
 - Safe MediaSession callback lifecycle and stale-controller cleanup.
 - Disconnect cleanup that selects one current media target.
 - Verified system-context write for the one-key-clean resume suppression.
@@ -38,6 +40,7 @@ When disabled, the previous player process is preserved and only automatic switc
 - Android device with Xposed/LSPosed
 - CarWith scope: `com.miui.carlink`
 - system_server scope: `android`
+- CarLife scope: `com.baidu.carlife.xiaomi`
 
 ## Build
 
@@ -56,21 +59,21 @@ app/build/outputs/apk/release/app-release.apk
 The prebuilt release is available at:
 
 ```text
-releases/CarWithEnhance-2.4.2-restore-60fps.apk
+releases/CarWithEnhance-2.4.3-precise-60fps.apk
 ```
 
 SHA-256:
 
 ```text
-16A233432E61249BA9542E4C453D903658AEA652241D9018F75FB81EA024E598
+D246AC8F27F92A80D999CAECE1935808C9BAC448C01C0EEDD811C48A28AAC23F
 ```
 
 ## Installation
 
 1. Install the APK with `adb install -r` or a file manager.
 2. Enable the module in LSPosed.
-3. Select `com.miui.carlink` and `android` scopes.
-4. Reboot the phone so the system_server hooks are loaded.
+3. Select `com.miui.carlink`, `android`, and `com.baidu.carlife.xiaomi` scopes.
+4. Restart CarLife/CarWith and reconnect the vehicle.
 
 ## Documentation
 
@@ -80,6 +83,7 @@ SHA-256:
 - [Verification](docs/VERIFICATION.md)
 - [Switch-player kill option](docs/SWITCH-PLAYER-KILL-TOGGLE.md)
 - [Frame-rate restoration](docs/FRAME-RATE-RESTORATION.md)
+- [Precise 60 FPS pacing](docs/PRECISE-60FPS-PACING.md)
 
 ## Repository scope
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.4.3 - 2026-11-09
+
+- Added a CarLife process scope for precise frame scheduling.
+- Replaced the 60 FPS integer-millisecond pacer with a nanosecond deadline policy.
+- Added missed-frame handling that avoids catch-up bursts.
+- Applied `Surface.setFrameRate(60, FIXED_SOURCE)` to the encoder input Surface.
+- Added the `精确60FPS帧调度` switch, enabled by default.
+- Added `DEGRADED_17MS` fallback when the precise renderer target cannot be resolved.
+- Left the native 30/20/15 FPS scheduling paths unchanged.
+
 ## 2.4.2 - 2026-11-08
 
 - Removed the injected 50 FPS menu option.
