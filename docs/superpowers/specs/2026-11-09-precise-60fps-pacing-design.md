@@ -32,7 +32,8 @@
 
 - 以 `SystemClock.elapsedRealtimeNanos()` 为时钟。
 - 目标步长使用纳秒计算：`1_000_000_000 / fps`。
-- 用绝对 deadline 消除长期漂移，60FPS 自然产生 16/17ms 交替延迟。
+- 用绝对 deadline 消除长期漂移；60FPS 的帧起点间隔平均为 16.667ms，
+  Handler 实际剩余等待会随渲染耗时呈现 15/16/17ms 的组合。
 - 如果单帧迟到超过一个目标周期，跳过错过的帧并重置到当前时间，不连续补发，
   避免瞬时向编码器灌入两帧。
 - 只在目标帧率变化时重置相位；相同帧率重复调用不重置。
@@ -45,8 +46,8 @@
 - 精确调度可用时，不执行原始 `interval - elapsed` 整数毫秒算法。
 - 由 `FramePacerPolicy` 计算延迟后，通过当前 `Handler` 发送
   `MSG_RENDER_DISPLAY=2`。
-- Hook 仅当用户启用精确调度且目标帧率不小于 15 时生效。
-- 用户选择 30/20/15 时保持 CarLife 原始逻辑；选择 60 时使用精确调度。
+- Hook 仅当用户启用精确调度且目标帧率为 60 时生效。
+- 用户选择 30/20/15FPS 时保持 CarLife 原始逻辑。
 
 ### 4. 编码 Surface 帧率
 
@@ -61,7 +62,8 @@ surface.setFrameRate(
 ```
 
 - 仅在 API 30 及以上调用；模块 minSdk 29 保持不变。
-- 用于向 SurfaceFlinger 声明固定生产者帧率，辅助系统按 60Hz 调度。
+- 仅在 60FPS 档用于向 SurfaceFlinger 声明固定生产者帧率，辅助系统按
+  60Hz 调度。
 - Surface 尚未创建时不报错，在连接初始化 Hook 中再次补齐。
 
 ### 5. 跨版本解析和降级
