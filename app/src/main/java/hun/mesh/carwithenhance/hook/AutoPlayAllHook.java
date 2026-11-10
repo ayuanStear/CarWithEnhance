@@ -150,7 +150,7 @@ public class AutoPlayAllHook implements IHook {
     });
     private static final long KILL_MIN_SETTLE_MS = 800;
     private static final long KILL_GRACE_MAX_WAIT_MS = 1200;
-    private static final long[] RETRY_DELAYS = {250, 600, KILL_GRACE_MAX_WAIT_MS, 1800, 2500, 3200, 4000, 5000, 6000, 8000, 10000, 13000, 16000, 20000, 24000};
+    private static final long[] RETRY_DELAYS = {100, 250, 450, 700, 1000, KILL_GRACE_MAX_WAIT_MS, 1600, 2100, 2700, 3400, 4200, 5000, 6000, 8000, 10000, 13000, 16000, 20000, 24000};
     private static final long[] PANEL_RECONCILE_DELAYS = {250, 600, 1200, 2500, 5000};
 
     /* JADX WARN: Unreachable blocks removed: 1, instructions: 1 */
@@ -2690,6 +2690,7 @@ public class AutoPlayAllHook implements IHook {
                     @Override // android.media.browse.MediaBrowser.ConnectionCallback
                     public void onConnected() {
                         AutoPlayAllHook.log(null, "后台已连接媒体服务: " + componentName.flattenToShortString());
+                        AutoPlayAllHook.onMediaServiceConnected(componentName);
                     }
 
                     @Override // android.media.browse.MediaBrowser.ConnectionCallback
@@ -2710,6 +2711,26 @@ public class AutoPlayAllHook implements IHook {
             } catch (Throwable th2) {
                 logErr(context, "绑定异常: " + strFlattenToShortString, th2);
             }
+        }
+    }
+
+    /** 媒体浏览服务连接成功后，立即尝试续播（对齐 QQ 音乐“绑定服务即播”的体验） */
+    private static void onMediaServiceConnected(ComponentName componentName) {
+        try {
+            String pkg = componentName == null ? null : componentName.getPackageName();
+            if (pkg == null || pkg.length() == 0) {
+                return;
+            }
+            String waiting = sWaitingPkg;
+            if (waiting != null && waiting.equals(pkg) && sCarConnected) {
+                if (resumeAfterPanelIfReady(sCl, pkg)) {
+                    log(sAppCtx, "媒体服务连接后立即续播: " + pkg);
+                } else {
+                    log(sAppCtx, "媒体服务已连接，等待面板元数据: " + pkg);
+                }
+            }
+        } catch (Throwable th) {
+            logErr(null, "媒体服务连接回调处理失败", th);
         }
     }
 
