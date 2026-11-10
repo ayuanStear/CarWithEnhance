@@ -16,15 +16,28 @@ import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 
-/** Advances the custom media card lyric control from the same position as its seek bar. */
+/** Advances the custom media card lyric control from the live playback position. */
 public final class LyricProgressHook implements IHook {
+    private static final long TICK_MS = 200L;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final Map<Object, Long> LAST_POSITION = new WeakHashMap<>();
+    private static final Map<Object, LyricTarget> TARGETS = new WeakHashMap<>();
     private static final Map<Class<?>, Field> FIELD_CACHE = new WeakHashMap<>();
     private static final Set<Class<?>> FIELD_MISSES = new HashSet<>();
     private static final Set<String> LOGGED_FAILURES = new HashSet<>();
     private static final Set<Class<?>> LOGGED_INITIAL_SUCCESS = new HashSet<>();
     private static volatile boolean installed;
+    private static volatile boolean clockStarted;
+
+    private static final class LyricTarget {
+        final Object lyricView;
+        final Method method;
+
+        LyricTarget(Object lyricView, Method method) {
+            this.lyricView = lyricView;
+            this.method = method;
+        }
+    }
 
     @Override
     public void onHook(ClassLoader classLoader) {
@@ -54,66 +67,128 @@ public final class LyricProgressHook implements IHook {
         installed = hooked > 0;
         if (!installed) {
             XLog.e("[歌词时钟] 未找到可用的媒体进度控件，保留官方歌词行为");
+            return;
+        }
+        startClock();
+    }
+
+    private static void startClock() {
+        if (clockStarted) {
+            return;
+        }
+        clockStarted = true;
+        MAIN.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    tick();
+                } finally {
+                    MAIN.postDelayed(this, TICK_MS);
+                }
+            }
+        }, TICK_MS);
+    }
+
+    private static void tick() {
+        if (!AutoPlayAllHook.isCarConnected()) {
+            return;
+        }
+        String pkg = AutoPlayAllHook.currentPlayingPackageForLyric();
+        long position = pkg == null ? -1 : AutoPlayAllHook.extrapolatedPlaybackPosition(pkg);
+        if (position < 0) {
+            return;
+        }
+        LyricTarget[] snapshot;
+        synchronized (TARGETS) {
+            snapshot = TARGETS.values().toArray(new LyricTarget[0]);
+        }
+        for (LyricTarget target : snapshot) {
+            advance(target, position);
         }
     }
 
     private static void forwardPosition(Object mediaView, long positionMs) {
-        if (!(mediaView instanceof View)
-                || !LyricClockPolicy.shouldAdvance(
-                lastPosition(mediaView), positionMs, AutoPlayAllHook.isCarConnected())) {
+        if (!(mediaView instanceof View)) {
             return;
         }
-        rememberPosition(mediaView, positionMs);
-        final Field field = lyricField(mediaView.getClass());
-        if (field == null) {
+        LyricTarget target = resolveTarget(mediaView);
+        if (target == null) {
             return;
+        }
+        advance(target, positionMs);
+    }
+
+    private static LyricTarget resolveTarget(Object mediaView) {
+        synchronized (TARGETS) {
+            LyricTarget cached = TARGETS.get(mediaView);
+            if (cached != null) {
+                return cached;
+            }
+        }
+        Field field = lyricField(mediaView.getClass());
+        if (field == null) {
+            return null;
         }
         Object lyricView;
         try {
             lyricView = field.get(mediaView);
         } catch (Throwable th) {
             forgetField(mediaView.getClass());
-            return;
+            return null;
         }
         if (lyricView == null) {
-            return;
+            return null;
         }
         Method lyricMethod = CarWithMediaCapabilities.lyricMethod(lyricView.getClass());
         if (lyricMethod == null && field.getType() != lyricView.getClass()) {
             lyricMethod = CarWithMediaCapabilities.lyricMethod(field.getType());
         }
         if (lyricMethod == null) {
+            return null;
+        }
+        LyricTarget target = new LyricTarget(lyricView, lyricMethod);
+        synchronized (TARGETS) {
+            TARGETS.put(mediaView, target);
+        }
+        return target;
+    }
+
+    private static void advance(final LyricTarget target, final long positionMs) {
+        if (!LyricClockPolicy.shouldAdvance(
+                lastPosition(target), positionMs, AutoPlayAllHook.isCarConnected())) {
             return;
         }
-        final Object target = lyricView;
-        final Method method = lyricMethod;
-        Runnable action = () -> {
-            try {
-                method.invoke(target, positionMs);
-                logInitialSuccess(target.getClass(), positionMs);
-            } catch (Throwable th) {
-                logOnce("invoke:" + target.getClass().getName(), th);
+        rememberPosition(target, positionMs);
+        Runnable action = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    target.method.invoke(target.lyricView, positionMs);
+                    logInitialSuccess(target.lyricView.getClass(), positionMs);
+                } catch (Throwable th) {
+                    logOnce("invoke:" + target.lyricView.getClass().getName(), th);
+                }
             }
         };
         if (Looper.myLooper() == Looper.getMainLooper()) {
             action.run();
-        } else if (target instanceof View) {
-            ((View) target).post(action);
+        } else if (target.lyricView instanceof View) {
+            ((View) target.lyricView).post(action);
         } else {
             MAIN.post(action);
         }
     }
 
-    private static long lastPosition(Object view) {
+    private static long lastPosition(Object key) {
         synchronized (LAST_POSITION) {
-            Long previous = LAST_POSITION.get(view);
+            Long previous = LAST_POSITION.get(key);
             return previous == null ? Long.MIN_VALUE : previous.longValue();
         }
     }
 
-    private static void rememberPosition(Object view, long positionMs) {
+    private static void rememberPosition(Object key, long positionMs) {
         synchronized (LAST_POSITION) {
-            LAST_POSITION.put(view, Long.valueOf(positionMs));
+            LAST_POSITION.put(key, Long.valueOf(positionMs));
         }
     }
 

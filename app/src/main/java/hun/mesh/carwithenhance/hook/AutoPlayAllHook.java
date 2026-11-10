@@ -81,6 +81,7 @@ public class AutoPlayAllHook implements IHook {
     private static final long PAUSE_MAX_WAIT_MS = 1600;
     private static final long PAUSE_POLL_MS = 100;
     private static final long DUPLICATE_RESUME_WINDOW_MS = 600L;
+    private static final long PANEL_READY_MAX_WAIT_MS = 6000L;
     private static final long ONE_KEY_CLEAN_MAX_AGE_MS = 5 * 60 * 1000L;
     private static final Map<String, String> PLAYBACK_SERVICES;
     private static final String PREFS = "carwithenhance_hooksettings";
@@ -638,8 +639,11 @@ public class AutoPlayAllHook implements IHook {
                                                     true,
                                                     targetPlaying,
                                                     AutoPlayAllHook.playingOtherMedia(context2, str2))) {
-                                        AutoPlayAllHook.log(AutoPlayAllHook.sAppCtx, "监听到 " + str2 + " 会话已出现，立即续播");
-                                        AutoPlayAllHook.resumeCarWith(classLoader, str2);
+                                        if (AutoPlayAllHook.resumeAfterPanelIfReady(classLoader, str2)) {
+                                            AutoPlayAllHook.log(AutoPlayAllHook.sAppCtx, "监听到 " + str2 + " 会话已出现，面板就绪，立即续播");
+                                        } else {
+                                            AutoPlayAllHook.log(AutoPlayAllHook.sAppCtx, "监听到 " + str2 + " 会话已出现，等待面板元数据");
+                                        }
                                     } else if (targetPlaying || !autoPlayEnabled) {
                                         AutoPlayAllHook.cancelRetryTasks();
                                     }
@@ -917,6 +921,75 @@ public class AutoPlayAllHook implements IHook {
         } catch (Throwable th) {
             logErr(context, "通知 CarWith 媒体面板失败: " + pkg, th);
         }
+    }
+
+    /** 面板身份就绪：目标会话存在且元数据已有歌名/歌手 */
+    private static boolean hasPanelIdentity(String pkg) {
+        MediaController controller = findController(sAppCtx, pkg);
+        if (controller == null) {
+            return false;
+        }
+        MediaMetadata metadata = controller.getMetadata();
+        if (metadata == null) {
+            return false;
+        }
+        return firstNonEmpty(
+                metadata.getString(MediaMetadata.METADATA_KEY_TITLE),
+                metadata.getString(MediaMetadata.METADATA_KEY_ARTIST)).length() > 0;
+    }
+
+    private static boolean panelWaitExceeded() {
+        return sWaitStartAt > 0
+                && SystemClock.elapsedRealtime() - sWaitStartAt >= PANEL_READY_MAX_WAIT_MS;
+    }
+
+    /** 面板先行：面板就绪（或超时兜底）后先推面板，再下发续播；返回是否已下发 */
+    private static boolean resumeAfterPanelIfReady(ClassLoader classLoader, String pkg) {
+        if (!hasPanelIdentity(pkg) && !panelWaitExceeded()) {
+            return false;
+        }
+        MediaController controller = findController(sAppCtx, pkg);
+        if (controller != null) {
+            refreshCarWithMediaState(sAppCtx, pkg, controller);
+        }
+        resumeCarWith(classLoader, pkg);
+        return true;
+    }
+
+    /** 供歌词时钟读取当前播放中的媒体包名 */
+    public static String currentPlayingPackageForLyric() {
+        if (sConfirmedPlayingPkg != null) {
+            return sConfirmedPlayingPkg;
+        }
+        if (sPlayingPkg != null) {
+            return sPlayingPkg;
+        }
+        return sCurrentMediaPkg;
+    }
+
+    /** 外推播放位置（毫秒），无效返回 -1；供歌词时钟做实时推进 */
+    public static long extrapolatedPlaybackPosition(String pkg) {
+        if (pkg == null) {
+            return -1;
+        }
+        MediaController controller = findController(sAppCtx, pkg);
+        if (controller == null) {
+            return -1;
+        }
+        PlaybackState state = controller.getPlaybackState();
+        if (state == null) {
+            return -1;
+        }
+        long position = state.getPosition();
+        if (position < 0) {
+            return -1;
+        }
+        float speed = state.getPlaybackSpeed();
+        if (speed <= 0f) {
+            return position;
+        }
+        long elapsed = SystemClock.elapsedRealtime() - state.getLastPositionUpdateTime();
+        return position + (long) (elapsed * speed);
     }
 
     private static MediaSnapshot createMediaSnapshot(String pkg, MediaController controller) {
@@ -1382,7 +1455,7 @@ public class AutoPlayAllHook implements IHook {
                 sWaitingPkg = lastUsedMediaApp;
                 if (ResumeReadinessPolicy.canSendOfficialResume(
                         autoPlayEnabled, processRunning, hasSession, targetPlaying, otherMediaPlaying)) {
-                    resumeCarWith(sCl, lastUsedMediaApp);
+                    resumeAfterPanelIfReady(sCl, lastUsedMediaApp);
                 } else if (processRunning && !hasSession) {
                     log(context, "播放器进程已就绪但媒体会话尚未出现，等待会话后官方续播 " + lastUsedMediaApp);
                 }
@@ -2230,10 +2303,13 @@ public class AutoPlayAllHook implements IHook {
                         + ", confirmed=" + str.equals(sConfirmedPlayingPkg) + ")");
                 return;
             }
-            log(appContext, str + " 已有媒体会话，交给 CarWith");
-            sResumedPkg = str;
-            learnCurrentMedia(str);
-            resumeCarWith(classLoader, str);
+            if (resumeAfterPanelIfReady(classLoader, str)) {
+                log(appContext, str + " 已有媒体会话，面板就绪，交给 CarWith");
+                sResumedPkg = str;
+                learnCurrentMedia(str);
+            } else {
+                log(appContext, str + " 已有媒体会话，但面板元数据未就绪，等待续播");
+            }
             return;
         }
         if (!z && playingOtherMedia(appContext, str)) {
@@ -2255,7 +2331,11 @@ public class AutoPlayAllHook implements IHook {
             if (ResumeReadinessPolicy.canSendOfficialResume(
                     readPrefAutoPlay(), processRunning, hasSession,
                     isPlaying(appContext, str), playingOtherMedia(appContext, str))) {
-                resumeCarWith(classLoader, str);
+                if (resumeAfterPanelIfReady(classLoader, str)) {
+                    log(appContext, "重复打开回调，面板就绪，续播 " + str);
+                } else {
+                    log(appContext, "重复打开回调暂不续播，等待面板元数据 " + str);
+                }
             } else if (processRunning && !hasSession) {
                 log(appContext, "重复打开回调暂不续播，等待媒体会话 " + str);
             }
@@ -2792,9 +2872,12 @@ public class AutoPlayAllHook implements IHook {
                                 }
                                 return;
                             }
-                            sResumedPkg = str;
-                            log(context, "会话已就绪，下发官方续播 " + str);
-                            resumeCarWith(classLoader, str);
+                            if (resumeAfterPanelIfReady(classLoader, str)) {
+                                sResumedPkg = str;
+                                log(context, "会话已就绪，面板已同步，下发官方续播 " + str);
+                            } else {
+                                log(context, "会话已就绪，等待面板元数据 " + str);
+                            }
                             return;
                         }
                         cancelRetryTasks();
