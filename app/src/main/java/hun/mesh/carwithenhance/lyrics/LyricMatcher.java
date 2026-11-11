@@ -4,7 +4,7 @@ import java.util.List;
 
 /** 复刻自 HyperMusicCover 的 LyricMatch 打分核心：title +50 / artist +30 / 时长修正，85 分过关。 */
 public final class LyricMatcher {
-    public static final int PASS_SCORE = 85;
+    public static final int PASS_SCORE = 80;
 
     private LyricMatcher() {
     }
@@ -25,8 +25,6 @@ public final class LyricMatcher {
                 s += 15;
             } else if (gap <= 5000) {
                 s += 10;
-            } else {
-                s -= 30;
             }
         }
         return s;

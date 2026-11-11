@@ -1,5 +1,6 @@
 package hun.mesh.carwithenhance.lyrics;
 
+import hun.mesh.carwithenhance.utils.XLog;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.net.URLEncoder;
@@ -20,16 +21,21 @@ public final class NetEaseLyrics {
         if (terms.isEmpty()) {
             return null;
         }
+        XLog.i(">> [网易] 搜索: " + terms + " dur=" + durationMs);
         String json = OnlineLyricClient.get(String.format(SEARCH, enc(terms)));
         if (json == null) {
+            XLog.i(">> [网易] 搜索请求失败或网络不可用: " + terms);
             return null;
         }
         String id = pick(json, title, artist, durationMs);
         if (id == null) {
+            XLog.i(">> [网易] 未匹配到歌曲: " + terms);
             return null;
         }
+        XLog.i(">> [网易] 匹配到 id=" + id);
         String lyricJson = OnlineLyricClient.get(String.format(LYRIC, id));
         if (lyricJson == null) {
+            XLog.i(">> [网易] 歌词请求失败 id=" + id);
             return null;
         }
         try {
