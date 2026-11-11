@@ -31,20 +31,20 @@ public class CardLyricLayoutHook implements IHook {
             "com.carwith.launcher.card.MusicPlayView",
             "com.carwith.launcher.card.DockerMusicView"
         };
-        for (String cn : names) {
-            try {
-                Class<?> c = XposedHelpers.findClass(cn, classLoader);
-                XposedHelpers.findAndHookConstructor(c, Context.class, AttributeSet.class,
-                    new XC_MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
-                            View v = (View) param.thisObject;
-                            CARDS.add(new WeakReference<>(v));
-                            XLog.i(">> [歌词布局] 卡片实例注册 " + v.getClass().getSimpleName());
-                        }
-                    });
-            } catch (Throwable ignored) {
-            }
+        try {
+            XposedHelpers.findAndHookMethod(View.class, "onAttachedToWindow", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    View v = (View) param.thisObject;
+                    String cn = v.getClass().getName();
+                    if (cn.contains("CardMusicView") || cn.contains("MusicPlayView")
+                            || cn.contains("MusicControlView") || cn.contains("DockerMusicView")) {
+                        CARDS.add(new WeakReference<>(v));
+                        XLog.i(">> [歌词布局] 卡片实例注册 " + cn);
+                    }
+                }
+            });
+        } catch (Throwable ignored) {
         }
 
         Method v0 = CarWithMediaCapabilities.INSTANCE.getMetadataHandlerMethod();
