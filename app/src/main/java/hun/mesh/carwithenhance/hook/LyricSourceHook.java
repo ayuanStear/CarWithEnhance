@@ -29,7 +29,7 @@ public class LyricSourceHook implements IHook {
     private static final String KEY_ALBUM = "android.media.metadata.ALBUM";
     private static final String KEY_DURATION = "android.media.metadata.DURATION";
 
-    private static final ExecutorService EXEC = Executors.newSingleThreadExecutor();
+    private static final ExecutorService EXEC = Executors.newCachedThreadPool();
     private static final Set<String> IN_FLIGHT = ConcurrentHashMap.newKeySet();
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final Map<String, String> LRC_CACHE =

@@ -95,7 +95,7 @@ public final class OnlineLyrics {
     }
 
     /** The whole lookup's budget, the same as the race it runs in. */
-    private static final long BUDGET_MS = 8000L;
+    private static final long BUDGET_MS = 1500L;
 
     /** The first two in the order, together. Null when neither placed the song. */
     static Found first(final String pkg, final NcmLyrics.Query q) {
@@ -138,12 +138,58 @@ public final class OnlineLyrics {
         return got[0] != null ? got[0] : got[1];
     }
 
-    /** The rest of the order, one at a time. Null when none of them had it. */
+    /** The rest of the order, in parallel under the same budget. Null when none had it. */
     static Found rest(String pkg, NcmLyrics.Query q) {
         List<Src> order = order(pkg);
+        int count = order.size() - 2;
+        if (count <= 0) {
+            return null;
+        }
+        final Found[] got = new Found[order.size()];
+        final BlockingQueue<Integer> done = new LinkedBlockingQueue<>();
         for (int i = 2; i < order.size(); i++) {
-            Found f = ask(order.get(i), q);
-            if (f != null) return f;
+            final int slot = i;
+            LyricThread.run("MCLyric" + order.get(i), new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        got[slot] = ask(order.get(slot), q);
+                    } finally {
+                        done.offer(slot);
+                    }
+                }
+            }, () -> done.offer(slot));
+        }
+        boolean[] finished = new boolean[order.size()];
+        int answered = 0;
+        long deadline = android.os.SystemClock.uptimeMillis() + BUDGET_MS;
+        while (answered < count) {
+            long left = deadline - android.os.SystemClock.uptimeMillis();
+            if (left <= 0) {
+                break;
+            }
+            Integer slot;
+            try {
+                slot = done.poll(left, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            if (slot == null) {
+                break;
+            }
+            finished[slot] = true;
+            answered++;
+            for (int i = 2; i < order.size(); i++) {
+                if (finished[i] && got[i] != null) {
+                    return got[i];
+                }
+            }
+        }
+        for (int i = 2; i < order.size(); i++) {
+            if (got[i] != null) {
+                return got[i];
+            }
         }
         return null;
     }

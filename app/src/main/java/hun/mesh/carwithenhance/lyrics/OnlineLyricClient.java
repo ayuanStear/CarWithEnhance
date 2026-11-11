@@ -47,8 +47,8 @@ public final class OnlineLyricClient {
         }
     }
 
-    private static final int CONNECT_TIMEOUT_MS = 4000;
-    private static final int READ_TIMEOUT_MS = 6000;
+    private static final int CONNECT_TIMEOUT_MS = 2000;
+    private static final int READ_TIMEOUT_MS = 2500;
 
     /** `tag` is the caller's log prefix, so one account of a failed request says whose it was. */
     public static Reply get(String url, String tag) {
