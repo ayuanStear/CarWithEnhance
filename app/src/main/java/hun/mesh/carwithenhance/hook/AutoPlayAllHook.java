@@ -805,15 +805,7 @@ public class AutoPlayAllHook implements IHook {
     }
 
     private static void onMediaMetadataChanged(String pkg, MediaController controller) {
-        Context context = sAppCtx;
-        if (context == null || pkg == null || !sCarConnected
-                || !isMediaApp(sCl, pkg) || isNeverKill(pkg)) {
-            return;
-        }
-        PlaybackState state = controller.getPlaybackState();
-        if (state != null && state.getState() == PlaybackState.STATE_PLAYING) {
-            refreshCarWithMediaState(context, pkg, controller);
-        }
+        // 面板同步已移除：元数据变化不再主动刷新控制面板。
     }
 
     public static boolean isCarConnected() {
@@ -846,84 +838,9 @@ public class AutoPlayAllHook implements IHook {
 
     private static void refreshCarWithMediaState(
             final Context context, final String pkg, final MediaController controller) {
-        if (Looper.myLooper() != Looper.getMainLooper()) {
-            if (sHandler == null) {
-                sHandler = new Handler(Looper.getMainLooper());
-            }
-            sHandler.post(new Runnable() {
-                @Override
-                public void run() {
-                    refreshCarWithMediaState(context, pkg, controller);
-                }
-            });
-            return;
-        }
-        long startedAt = SystemClock.elapsedRealtime();
-        String snapshotKey = panelSnapshotKey(pkg, controller);
-        MediaSnapshot previous = PANEL_SNAPSHOTS.get(snapshotKey);
-        MediaSnapshot next = MediaSnapshotPolicy.coalesce(
-                previous, createMediaSnapshot(pkg, controller));
-        if (!MediaSnapshotPolicy.shouldRefresh(previous, next)) {
-            return;
-        }
-        if (CarWithMediaCapabilities.INSTANCE.tryRefreshPanel(context, pkg, controller)) {
-            PANEL_SNAPSHOTS.put(snapshotKey, next);
-            log(context, "媒体面板快照已刷新: " + pkg
-                    + " track=" + (next.title.isEmpty() ? "(unknown)" : next.title)
-                    + " state=" + next.playbackState
-                    + " (" + (SystemClock.elapsedRealtime() - startedAt) + "ms)");
-            return;
-        }
-        Object mediaManager = null;
-        try {
-            Object sessionManager = XposedHelpers.callStaticMethod(
-                    XposedHelpers.findClass("xa.c", sCl), "h", new Object[0]);
-            Object compatibilityController = XposedHelpers.callMethod(
-                    sessionManager, "p", new Object[]{context, controller});
-            mediaManager = XposedHelpers.callStaticMethod(
-                    XposedHelpers.findClass("ma.a", sCl), "p", new Object[0]);
-            if (compatibilityController != null && mediaManager != null) {
-                XposedHelpers.callMethod(mediaManager, "c", new Object[]{compatibilityController});
-            }
-        } catch (Throwable th) {
-            logErr(context, "刷新 CarWith 媒体控制器失败: " + pkg, th);
-        }
-
-        try {
-            if (mediaManager == null) {
-                mediaManager = XposedHelpers.callStaticMethod(
-                        XposedHelpers.findClass("ma.a", sCl), "p", new Object[0]);
-            }
-            if (mediaManager != null) {
-                try {
-                    XposedHelpers.callMethod(mediaManager, "f", new Object[]{pkg});
-                } catch (Throwable ignored) {
-                }
-                Object current = XposedHelpers.callMethod(mediaManager, "o", new Object[0]);
-                if (!pkg.equals(current)) {
-                    XposedHelpers.setObjectField(mediaManager, "c", pkg);
-                }
-            }
-        } catch (Throwable th) {
-            logErr(context, "切换 CarWith 当前媒体应用失败: " + pkg, th);
-        }
-
-        try {
-            Object callbackHelper = XposedHelpers.callStaticMethod(
-                    XposedHelpers.findClass("pa.b", sCl), "e", new Object[0]);
-            if (callbackHelper != null) {
-                XposedHelpers.callMethod(callbackHelper, "d", new Object[]{pkg});
-                XposedHelpers.callMethod(callbackHelper, "h", new Object[]{pkg});
-            }
-            PANEL_SNAPSHOTS.put(snapshotKey, next);
-            log(context, "播放器已播放，控制面板同步: " + pkg
-                    + " (" + (SystemClock.elapsedRealtime() - startedAt) + "ms)");
-        } catch (Throwable th) {
-            logErr(context, "通知 CarWith 媒体面板失败: " + pkg, th);
-        }
+        // 面板同步已移除：控制面板改走 CarWith 原生刷新。
     }
 
-    /** 面板身份就绪：目标会话存在且元数据已有歌名/歌手 */
     private static boolean hasPanelIdentity(String pkg) {
         MediaController controller = findController(sAppCtx, pkg);
         if (controller == null) {
@@ -947,10 +864,6 @@ public class AutoPlayAllHook implements IHook {
     private static boolean resumeAfterPanelIfReady(ClassLoader classLoader, String pkg) {
         if (!hasPanelIdentity(pkg) && !panelWaitExceeded()) {
             return false;
-        }
-        MediaController controller = findController(sAppCtx, pkg);
-        if (controller != null) {
-            refreshCarWithMediaState(sAppCtx, pkg, controller);
         }
         resumeCarWith(classLoader, pkg);
         return true;
@@ -1336,39 +1249,7 @@ public class AutoPlayAllHook implements IHook {
     }
 
     private static void scheduleMediaPanelReconcile(final long generation) {
-        if (sHandler == null) {
-            sHandler = new Handler(Looper.getMainLooper());
-        }
-        for (long delay : PANEL_RECONCILE_DELAYS) {
-            sHandler.postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    Context context = sAppCtx;
-                    if (context == null || !sCarConnected || generation != sConnectGen) {
-                        return;
-                    }
-                    try {
-                        MediaSessionManager manager =
-                                (MediaSessionManager) context.getSystemService("media_session");
-                        List<MediaController> sessions =
-                                manager == null ? null : manager.getActiveSessions(null);
-                        if (sessions != null && !sessions.isEmpty()) {
-                            registerSessionCallbacks(sessions);
-                            String playing = findPlayingPackage(context, null);
-                            if (playing != null) {
-                                sPlayingPkg = playing;
-                                MediaController controller = findController(context, playing);
-                                if (controller != null) {
-                                    refreshCarWithMediaState(context, playing, controller);
-                                }
-                            }
-                        }
-                    } catch (Throwable th) {
-                        logErr(context, "连接后面板状态校准失败", th);
-                    }
-                }
-            }, delay);
-        }
+        // 面板同步已移除：不再调度连接后的面板校准。
     }
 
     private static void scheduleExperienceApply(final ClassLoader classLoader, long j) {
