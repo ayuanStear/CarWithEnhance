@@ -1,38 +1,54 @@
 package hun.mesh.carwithenhance.lyrics;
 
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** 把 QRC/word-timed 文本转成 CarWith 能解析的普通 LRC。 */
+/** 把 yrc/word-timed 文本转成 CarWith 能解析的普通 LRC。 */
 public final class LyricConvert {
-    private static final Pattern LINE_TIME =
-            Pattern.compile("^(\\[\\d{1,3}:\\d{2}(?:[.:]\\d{1,3})?\\])");
+    private static final Pattern YRC_LINE =
+            Pattern.compile("^\\[(\\d+),(\\d+)\\](.*)$");
+    private static final Pattern YRC_WORD =
+            Pattern.compile("\\(\\d+,\\d+,\\d+\\)([^()]*)");
 
     private LyricConvert() {
     }
 
-    /** body 是 LRC 就直接返回；带 <...> 词时间标签就折叠成普通 LRC。 */
-    public static String toLrc(String body) {
+    /** words 为 true 时是 yrc（词级时间轴），转成 LRC；否则原样返回。 */
+    public static String toLrc(String body, boolean words) {
         if (body == null) {
             return null;
         }
-        if (!body.contains("<")) {
+        if (!words) {
             return body;
         }
+        String converted = yrcToLrc(body);
+        return converted.isEmpty() ? body : converted;
+    }
+
+    private static String yrcToLrc(String body) {
         StringBuilder sb = new StringBuilder(body.length());
-        String[] lines = body.split("\n");
-        for (String line : lines) {
-            Matcher m = LINE_TIME.matcher(line);
-            if (m.find()) {
-                String time = m.group(1);
-                String rest = line.substring(m.end());
-                rest = rest.replaceAll("<[^>]*>", "");
-                sb.append(time).append(rest.trim()).append('\n');
-            } else {
-                // 保留 [ti:] 等非行时间标签，但去掉词标签
-                sb.append(line.replaceAll("<[^>]*>", "")).append('\n');
+        for (String line : body.split("\n")) {
+            Matcher lm = YRC_LINE.matcher(line.trim());
+            if (!lm.find()) {
+                continue;
             }
+            long start = Long.parseLong(lm.group(1));
+            StringBuilder text = new StringBuilder();
+            Matcher wm = YRC_WORD.matcher(lm.group(2));
+            while (wm.find()) {
+                text.append(wm.group(1));
+            }
+            if (text.length() == 0) {
+                continue;
+            }
+            sb.append(formatTime(start)).append(text).append('\n');
         }
         return sb.toString();
+    }
+
+    private static String formatTime(long ms) {
+        return String.format(Locale.ROOT, "[%02d:%02d.%02d]", ms / 60000L,
+                ms / 1000L % 60L, ms % 1000L / 10L);
     }
 }

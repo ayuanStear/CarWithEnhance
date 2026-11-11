@@ -147,7 +147,7 @@ public class LyricSourceHook implements IHook {
             if (r == null) {
                 return null;
             }
-            String lrc = LyricConvert.toLrc(r.body);
+            String lrc = LyricConvert.toLrc(r.body, r.words);
             if (lrc != null && !lrc.trim().isEmpty()) {
                 XLog.i(">> [词源] 在线歌词命中: " + title + " - " + artist
                         + " id=" + r.id + " " + lrc.length() + " chars");
