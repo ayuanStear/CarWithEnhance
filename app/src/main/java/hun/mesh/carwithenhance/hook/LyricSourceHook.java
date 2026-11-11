@@ -1,17 +1,33 @@
 package hun.mesh.carwithenhance.hook;
 
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
+import hun.mesh.carwithenhance.lyrics.OnlineLyricFetcher;
 import hun.mesh.carwithenhance.media.CarWithMediaCapabilities;
 import hun.mesh.carwithenhance.utils.XLog;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
-/** 词源优先：优先读取 metadata 中的 lyricInfo，缺失则保留 CarWith 原生歌词读取。 */
+/** 词源优先：lyricInfo 优先，其次在线取词，最后保留 CarWith 原生歌词读取。 */
 public class LyricSourceHook implements IHook {
     private static final String LYRIC_INFO_KEY = "lyricInfo";
+    private static final String NATIVE_LYRIC_KEY = "ucar.media.metadata.LYRICS_WHOLE";
+    private static final String KEY_TITLE = "android.media.metadata.TITLE";
+    private static final String KEY_ARTIST = "android.media.metadata.ARTIST";
+    private static final String KEY_ALBUM = "android.media.metadata.ALBUM";
+    private static final String KEY_DURATION = "android.media.metadata.DURATION";
+
+    private static final ExecutorService EXEC = Executors.newSingleThreadExecutor();
+    private static final Set<String> IN_FLIGHT = ConcurrentHashMap.newKeySet();
+    private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
     @Override
     public void onHook(ClassLoader classLoader) {
@@ -35,19 +51,72 @@ public class LyricSourceHook implements IHook {
                     if (metadata == null) {
                         return;
                     }
-                    String lyricInfo = readString(
-                            metadata, bundleField, stringGetter, LYRIC_INFO_KEY);
+                    Bundle bundle = readBundle(metadata, bundleField);
+                    if (bundle == null) {
+                        return;
+                    }
+                    String lyricInfo = bundle.getString(LYRIC_INFO_KEY);
                     if (lyricInfo != null && !lyricInfo.trim().isEmpty()) {
                         param.setResult(lyricInfo);
+                        return;
                     }
+                    String title = bundle.getString(KEY_TITLE);
+                    String artist = bundle.getString(KEY_ARTIST);
+                    String album = bundle.getString(KEY_ALBUM);
+                    long durationMs = bundle.getLong(KEY_DURATION, 0L);
+                    if (isEmpty(title) && isEmpty(artist)) {
+                        return;
+                    }
+                    String cacheKey = OnlineLyricFetcher.key(title, artist, album, durationMs);
+                    String cached = OnlineLyricFetcher.cached(cacheKey);
+                    if (cached != null && !cached.trim().isEmpty()) {
+                        param.setResult(cached);
+                        return;
+                    }
+                    scheduleFetch(cacheKey, title, artist, album, durationMs, bundle);
                 }
             });
-            XLog.i(">> [词源] lyricInfo 优先、原生兜底 Hook 已注册 -> "
+            XLog.i(">> [词源] lyricInfo/在线取词优先 + 原生兜底 Hook 已注册 -> "
                     + lyricSource.getDeclaringClass().getName()
-                    + "#" + lyricSource.getName());
+                    + "#" + lyricSource.getName()
+                    + " bundle=" + (bundleField != null)
+                    + " getter=" + (stringGetter != null));
         } catch (Throwable th) {
             XLog.e(">> [词源] lyricInfo Hook 注册失败", th);
         }
+    }
+
+    private static void scheduleFetch(final String cacheKey, final String title,
+                                      final String artist, final String album,
+                                      final long durationMs, final Bundle bundle) {
+        if (!IN_FLIGHT.add(cacheKey)) {
+            return;
+        }
+        EXEC.execute(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    final String lrc = OnlineLyricFetcher.fetch(
+                            cacheKey, title, artist, album, durationMs);
+                    if (lrc == null || lrc.trim().isEmpty()) {
+                        return;
+                    }
+                    MAIN.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                bundle.putString(NATIVE_LYRIC_KEY, lrc);
+                            } catch (Throwable ignored) {
+                            }
+                        }
+                    });
+                    XLog.i(">> [词源] 在线歌词已获取: " + title + " - " + artist
+                            + " (" + lrc.length() + " chars)");
+                } finally {
+                    IN_FLIGHT.remove(cacheKey);
+                }
+            }
+        });
     }
 
     private static Field resolveBundleField(Class<?> metadataClass) {
@@ -105,29 +174,19 @@ public class LyricSourceHook implements IHook {
         return found;
     }
 
-    private static String readString(
-            Object metadata, Field bundleField, Method stringGetter, String key) {
-        if (bundleField != null) {
-            try {
-                Object value = bundleField.get(metadata);
-                if (value instanceof Bundle) {
-                    String fromBundle = ((Bundle) value).getString(key);
-                    if (fromBundle != null) {
-                        return fromBundle;
-                    }
-                }
-            } catch (Throwable ignored) {
-            }
+    private static Bundle readBundle(Object metadata, Field bundleField) {
+        if (bundleField == null) {
+            return null;
         }
-        if (stringGetter != null) {
-            try {
-                Object value = stringGetter.invoke(metadata, key);
-                if (value instanceof String) {
-                    return (String) value;
-                }
-            } catch (Throwable ignored) {
-            }
+        try {
+            Object value = bundleField.get(metadata);
+            return value instanceof Bundle ? (Bundle) value : null;
+        } catch (Throwable ignored) {
+            return null;
         }
-        return null;
+    }
+
+    private static boolean isEmpty(String s) {
+        return s == null || s.trim().isEmpty();
     }
 }
