@@ -1,5 +1,6 @@
 package hun.mesh.carwithenhance.hook;
 
+import android.app.Activity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
@@ -13,41 +14,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-/** 无歌词时放大封面：通过 na.c.v0 判断歌词列表是否为空，找到当前卡片封面并缩放。 */
+/** 无歌词时放大封面：na.c.v0 判定歌词空后，从 Activity 视图树定位卡片并缩放封面。 */
 public class CardLyricLayoutHook implements IHook {
-    private static final Map<Object, View> VIEW_BY_CTL = new WeakHashMap<>();
     private static final Map<View, float[]> ORIGINAL_SCALE = new WeakHashMap<>();
-    private static volatile boolean sDumped;
 
     @Override
     public void onHook(ClassLoader classLoader) {
-        Class<?> mmc = XposedHelpers.findClass(
-                "android.support.v4.media.MediaMetadataCompat", classLoader);
-        // 在元数据更新时把控制器->卡片视图 建立映射
-        for (String cn : new String[]{
-                "com.carwith.launcher.card.CardMusicView",
-                "com.carwith.launcher.card.ModerateCardMusicView",
-                "com.carwith.launcher.card.MusicControlView",
-                "com.carwith.launcher.card.MusicPlayView"}) {
-            try {
-                Class<?> c = XposedHelpers.findClass(cn, classLoader);
-                for (String m : new String[]{"m0", "n0"}) {
-                    try {
-                        XposedHelpers.findAndHookMethod(c, m,
-                            mmc,
-                            new XC_MethodHook() {
-                                @Override
-                                protected void afterHookedMethod(MethodHookParam param) {
-                                    register(param.thisObject);
-                                }
-                            });
-                    } catch (Throwable ignored) {
-                    }
-                }
-            } catch (Throwable ignored) {
-            }
-        }
-
         Method v0 = CarWithMediaCapabilities.INSTANCE.getMetadataHandlerMethod();
         if (v0 == null) {
             XLog.e(">> [歌词布局] 未解析到 v0");
@@ -61,9 +33,12 @@ public class CardLyricLayoutHook implements IHook {
                         Object ctl = param.thisObject;
                         List<?> n = (List<?>) XposedHelpers.getObjectField(ctl, "n");
                         boolean hasLyric = n != null && !n.isEmpty();
-                        XLog.i(">> [歌词布局] v0 hasLyric=" + hasLyric + " list=" + (n == null ? -1 : n.size()));
-                        View card = VIEW_BY_CTL.get(ctl);
+                        Object ctx = XposedHelpers.getObjectField(ctl, "a");
+                        String ctxName = ctx == null ? "null" : ctx.getClass().getName();
+                        XLog.i(">> [歌词布局] v0 hasLyric=" + hasLyric + " ctx=" + ctxName);
+                        View card = findCardFromContext(ctx);
                         if (card == null) {
+                            XLog.i(">> [歌词布局] 未找到卡片");
                             return;
                         }
                         applyCover(card, !hasLyric);
@@ -78,23 +53,41 @@ public class CardLyricLayoutHook implements IHook {
         }
     }
 
-    private static void register(Object cardView) {
-        try {
-            Object ctl = XposedHelpers.getObjectField(cardView, "s");
-            if (ctl != null) {
-                VIEW_BY_CTL.put(ctl, (View) cardView);
-                XLog.i(">> [歌词布局] 注册卡片 " + cardView.getClass().getSimpleName());
-            }
-        } catch (Throwable ignored) {
+    private static View findCardFromContext(Object ctx) {
+        if (!(ctx instanceof Activity)) {
+            return null;
         }
+        return findCardView(((Activity) ctx).getWindow().getDecorView());
+    }
+
+    private static View findCardView(View root) {
+        if (root == null) {
+            return null;
+        }
+        String cn = root.getClass().getName();
+        if (cn.contains("CardMusicView") || cn.contains("MusicPlayView")
+                || cn.contains("MusicControlView")) {
+            return root;
+        }
+        if (root instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) root;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                View v = findCardView(g.getChildAt(i));
+                if (v != null) {
+                    return v;
+                }
+            }
+        }
+        return null;
     }
 
     private static void applyCover(final View card, final boolean noLyric) {
         card.post(new Runnable() {
             @Override
             public void run() {
-                final View cover = findLargestImageView(card);
+                View cover = findLargestImageView(card);
                 if (cover == null) {
+                    XLog.i(">> [歌词布局] 未找到封面");
                     return;
                 }
                 if (noLyric) {
@@ -105,13 +98,14 @@ public class CardLyricLayoutHook implements IHook {
                     cover.setPivotY(cover.getHeight() / 2f);
                     cover.setScaleX(1.35f);
                     cover.setScaleY(1.35f);
-                    XLog.i(">> [歌词布局] 无歌词，放大封面 " + cover.getWidth() + "x" + cover.getHeight());
+                    XLog.i(">> [歌词布局] 放大封面 " + cover.getWidth() + "x" + cover.getHeight()
+                            + " " + cover.getClass().getSimpleName());
                 } else {
                     float[] o = ORIGINAL_SCALE.get(cover);
                     if (o != null) {
                         cover.setScaleX(o[0]);
                         cover.setScaleY(o[1]);
-                        XLog.i(">> [歌词布局] 有歌词，恢复封面");
+                        XLog.i(">> [歌词布局] 恢复封面");
                     }
                 }
             }
