@@ -35,7 +35,7 @@ public final class LyricConvert {
             }
             long start = Long.parseLong(lm.group(1));
             StringBuilder text = new StringBuilder();
-            Matcher wm = YRC_WORD.matcher(lm.group(2));
+            Matcher wm = YRC_WORD.matcher(lm.group(3));
             while (wm.find()) {
                 text.append(wm.group(1));
             }
