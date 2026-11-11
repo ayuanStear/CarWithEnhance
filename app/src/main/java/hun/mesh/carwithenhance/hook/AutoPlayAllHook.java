@@ -30,11 +30,9 @@ import hun.mesh.carwithenhance.BuildConfig;
 import hun.mesh.carwithenhance.config.HookConfigs;
 import hun.mesh.carwithenhance.dexkit.CarWithDexKitManager;
 import hun.mesh.carwithenhance.dexkit.GenericAutoPlayHooks;
-import hun.mesh.carwithenhance.media.CarWithMediaCapabilities;
 import hun.mesh.carwithenhance.policy.ExperienceAppPolicy;
 import hun.mesh.carwithenhance.policy.MediaPlaybackPolicy;
-import hun.mesh.carwithenhance.policy.MediaSnapshot;
-import hun.mesh.carwithenhance.policy.MediaSnapshotPolicy;
+import hun.mesh.carwithenhance.policy.PanelReadyPolicy;
 import hun.mesh.carwithenhance.policy.ResumeReadinessPolicy;
 import hun.mesh.carwithenhance.utils.AppUtils;
 import java.io.BufferedWriter;
@@ -122,12 +120,11 @@ public class AutoPlayAllHook implements IHook {
     private static volatile String sPlayingPkg;
     private static volatile String sConfirmedPlayingPkg;
     private static volatile Set<String> sExperiencePackages = Collections.emptySet();
-    private static final Map<String, MediaSnapshot> PANEL_SNAPSHOTS = new ConcurrentHashMap();
+    private static final Map<String, Long> PANEL_WAIT_STARTED = new ConcurrentHashMap();
     private static final Map<String, MediaController.Callback> SESSION_CALLBACKS = new ConcurrentHashMap();
     private static final Map<String, MediaController> SESSION_CONTROLLERS = new ConcurrentHashMap();
     private static MediaSessionManager.OnActiveSessionsChangedListener sSessionListener;
     private static ExecutorService sSwitchExec;
-    private static volatile long sWaitStartAt;
     private static volatile String sWaitingPkg;
     private static final String[] FALLBACK = {"com.netease.cloudmusic", "com.luna.music", "com.kugou.android", "cmccwm.mobilemusic", "cn.kuwo.player", "com.miui.player"};
     private static final Set<String> EXPERIENCE_EXCLUDE = ExperienceAppPolicy.knownMapPackages();
@@ -189,6 +186,7 @@ public class AutoPlayAllHook implements IHook {
             }
         }
         sWaitingPkg = null;
+        PANEL_WAIT_STARTED.clear();
     }
 
     static {
@@ -850,101 +848,32 @@ public class AutoPlayAllHook implements IHook {
         if (metadata == null) {
             return false;
         }
-        return firstNonEmpty(
+        return PanelReadyPolicy.hasPanelIdentity(
+                metadata.getString(MediaMetadata.METADATA_KEY_MEDIA_ID),
                 metadata.getString(MediaMetadata.METADATA_KEY_TITLE),
-                metadata.getString(MediaMetadata.METADATA_KEY_ARTIST)).length() > 0;
+                metadata.getString(MediaMetadata.METADATA_KEY_ARTIST));
     }
 
-    private static boolean panelWaitExceeded() {
-        return sWaitStartAt > 0
-                && SystemClock.elapsedRealtime() - sWaitStartAt >= PANEL_READY_MAX_WAIT_MS;
+    private static boolean panelWaitExceeded(String pkg) {
+        Long startedAt = PANEL_WAIT_STARTED.get(pkg);
+        return startedAt != null
+                && PanelReadyPolicy.panelWaitExceeded(
+                        startedAt, SystemClock.elapsedRealtime(), PANEL_READY_MAX_WAIT_MS);
+    }
+
+    private static long panelWaitElapsed(String pkg) {
+        Long startedAt = PANEL_WAIT_STARTED.get(pkg);
+        return startedAt == null ? -1L : SystemClock.elapsedRealtime() - startedAt;
     }
 
     /** 面板先行：面板就绪（或超时兜底）后先推面板，再下发续播；返回是否已下发 */
     private static boolean resumeAfterPanelIfReady(ClassLoader classLoader, String pkg) {
-        if (!hasPanelIdentity(pkg) && !panelWaitExceeded()) {
+        if (!hasPanelIdentity(pkg) && !panelWaitExceeded(pkg)) {
             return false;
         }
         resumeCarWith(classLoader, pkg);
+        PANEL_WAIT_STARTED.remove(pkg);
         return true;
-    }
-
-    /** 供歌词时钟读取当前播放中的媒体包名 */
-    public static String currentPlayingPackageForLyric() {
-        if (sConfirmedPlayingPkg != null) {
-            return sConfirmedPlayingPkg;
-        }
-        if (sPlayingPkg != null) {
-            return sPlayingPkg;
-        }
-        return sCurrentMediaPkg;
-    }
-
-    /** 外推播放位置（毫秒），无效返回 -1；供歌词时钟做实时推进 */
-    public static long extrapolatedPlaybackPosition(String pkg) {
-        if (pkg == null) {
-            return -1;
-        }
-        MediaController controller = findController(sAppCtx, pkg);
-        if (controller == null) {
-            return -1;
-        }
-        PlaybackState state = controller.getPlaybackState();
-        if (state == null) {
-            return -1;
-        }
-        long position = state.getPosition();
-        if (position < 0) {
-            return -1;
-        }
-        float speed = state.getPlaybackSpeed();
-        if (speed <= 0f) {
-            return position;
-        }
-        long elapsed = SystemClock.elapsedRealtime() - state.getLastPositionUpdateTime();
-        return position + (long) (elapsed * speed);
-    }
-
-    private static MediaSnapshot createMediaSnapshot(String pkg, MediaController controller) {
-        MediaMetadata metadata = controller == null ? null : controller.getMetadata();
-        PlaybackState state = controller == null ? null : controller.getPlaybackState();
-        String artwork = "";
-        if (metadata != null) {
-            artwork = firstNonEmpty(
-                    metadata.getString(MediaMetadata.METADATA_KEY_ART_URI),
-                    metadata.getString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI),
-                    metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI));
-        }
-        return new MediaSnapshot(
-                pkg,
-                metadata == null ? "" : metadata.getString(MediaMetadata.METADATA_KEY_MEDIA_ID),
-                metadata == null ? "" : metadata.getString(MediaMetadata.METADATA_KEY_TITLE),
-                metadata == null ? "" : metadata.getString(MediaMetadata.METADATA_KEY_ARTIST),
-                metadata == null ? "" : metadata.getString(MediaMetadata.METADATA_KEY_ALBUM),
-                metadata == null ? 0L : metadata.getLong(MediaMetadata.METADATA_KEY_DURATION),
-                artwork,
-                state == null ? PlaybackState.STATE_NONE : state.getState(),
-                state == null ? 0.0f : state.getPlaybackSpeed(),
-                state == null ? 0L : state.getActions());
-    }
-
-    private static String firstNonEmpty(String... values) {
-        if (values != null) {
-            for (String value : values) {
-                if (value != null && !value.isEmpty()) {
-                    return value;
-                }
-            }
-        }
-        return "";
-    }
-
-    private static String panelSnapshotKey(String pkg, MediaController controller) {
-        try {
-            return pkg + "#" + controller.getSessionToken().hashCode();
-        } catch (Throwable ignored) {
-            return pkg;
-        }
     }
 
     private static void killPreviousPlaying(Context context, String previous, String current) {
@@ -1215,7 +1144,7 @@ public class AutoPlayAllHook implements IHook {
         sInitialResumeDone = false;
         sPlayingPkg = null;
         sConfirmedPlayingPkg = null;
-        PANEL_SNAPSHOTS.clear();
+        PANEL_WAIT_STARTED.clear();
         sLastPkg = null;
         sLastWake = 0L;
         sLastResumePkg = null;
@@ -1321,18 +1250,18 @@ public class AutoPlayAllHook implements IHook {
                     WOKE.add(lastUsedMediaApp);
                     sActiveWokePkg = lastUsedMediaApp;
                     sendMediaButton(context, lastUsedMediaApp);
-                    sWaitStartAt = SystemClock.elapsedRealtime();
+                    PANEL_WAIT_STARTED.put(lastUsedMediaApp, SystemClock.elapsedRealtime());
                     sWaitingPkg = lastUsedMediaApp;
                     if (ResumeReadinessPolicy.canSendOfficialResume(
                             autoPlayEnabled, processRunning, hasSession, targetPlaying, otherMediaPlaying)) {
-                        resumeCarWith(sCl, lastUsedMediaApp);
+                        resumeAfterPanelIfReady(sCl, lastUsedMediaApp);
                     }
                     startPlayerService(context, lastUsedMediaApp);
                     bindBrowseService(context, lastUsedMediaApp);
                     startRetryLoop(sCl, lastUsedMediaApp);
                     return;
                 }
-                sWaitStartAt = SystemClock.elapsedRealtime();
+                PANEL_WAIT_STARTED.put(lastUsedMediaApp, SystemClock.elapsedRealtime());
                 sWaitingPkg = lastUsedMediaApp;
                 if (ResumeReadinessPolicy.canSendOfficialResume(
                         autoPlayEnabled, processRunning, hasSession, targetPlaying, otherMediaPlaying)) {
@@ -1678,7 +1607,7 @@ public class AutoPlayAllHook implements IHook {
         sCarConnected = false;
         unregisterSessionCallbacks();
         sConfirmedPlayingPkg = null;
-        PANEL_SNAPSHOTS.clear();
+        PANEL_WAIT_STARTED.clear();
         sLastAcceptedPkg = null;
         sActiveWokePkg = null;
         SESSION_MEDIA.clear();
@@ -2235,7 +2164,7 @@ public class AutoPlayAllHook implements IHook {
         cancelRetryTasks();
         long j = sRetryGen;
         sWaitingPkg = str;
-        sWaitStartAt = SystemClock.elapsedRealtime();
+        PANEL_WAIT_STARTED.put(str, SystemClock.elapsedRealtime());
         int i = 0;
         while (true) {
             long[] jArr = RETRY_DELAYS;
@@ -2416,7 +2345,7 @@ public class AutoPlayAllHook implements IHook {
                 sResumeInFlight = false;
                 sLastResumePkg = str;
                 sLastResumeAt = SystemClock.elapsedRealtime();
-                log(sAppCtx, "已下发续播指令: " + str + " (距开始 " + (sWaitStartAt > 0 ? SystemClock.elapsedRealtime() - sWaitStartAt : -1L) + "ms)");
+                log(sAppCtx, "已下发续播指令: " + str + " (距开始 " + (panelWaitElapsed(str)) + "ms)");
             } catch (Throwable th) {
                 sResumeInFlight = false;
                 throw th;

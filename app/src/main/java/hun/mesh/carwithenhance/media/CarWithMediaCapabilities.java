@@ -26,6 +26,7 @@ public final class CarWithMediaCapabilities {
     private Method callbackRebind;
     private StructuralMethodLookup.Target routeEntry;
     private Method routeCapability;
+    private Method lyricSourceMethod;
     private List<StructuralMethodLookup.Target> lyricProgress =
             Collections.emptyList();
 
@@ -44,6 +45,7 @@ public final class CarWithMediaCapabilities {
             resolvePanel(lookup);
             resolveRoute(lookup);
             resolveLyrics(lookup);
+            resolveLyricSource(lookup);
             XLog.i("[媒体能力] 面板=" + (isPanelReady() ? "READY" : "DEGRADED")
                     + ", 路由=" + (isRouteReady() ? "READY" : "DEGRADED")
                     + ", 歌词=" + lyricProgress.size());
@@ -114,6 +116,30 @@ public final class CarWithMediaCapabilities {
         StructuralMethodLookup.Target service = unique(serviceTargets, "媒体路由判定");
         if (service != null) {
             routeCapability = uniqueMethod(service.owner, Boolean.TYPE, String.class);
+        }
+    }
+
+    private void resolveLyricSource(StructuralMethodLookup lookup) {
+        List<StructuralMethodLookup.Target> candidates = lookup.find(
+                StructuralMethodLookup.QuerySpec.named(
+                        "A",
+                        "java.lang.String",
+                        "android.support.v4.media.MediaMetadataCompat"));
+        StructuralMethodLookup.Target target = null;
+        for (StructuralMethodLookup.Target candidate : candidates) {
+            if ("na.c".equals(candidate.owner.getName())) {
+                target = candidate;
+                break;
+            }
+        }
+        if (target == null && candidates.size() == 1) {
+            target = candidates.get(0);
+        }
+        if (target != null) {
+            lyricSourceMethod = target.method;
+            XLog.i("[媒体能力] 词源入口 -> " + target.describe());
+        } else {
+            XLog.e("[媒体能力] 词源入口 MISSING，保留原生歌词行为");
         }
     }
 
@@ -195,6 +221,10 @@ public final class CarWithMediaCapabilities {
 
     public Method getRouteCapability() {
         return routeCapability;
+    }
+
+    public Method getLyricSourceMethod() {
+        return lyricSourceMethod;
     }
 
     public List<StructuralMethodLookup.Target> getLyricProgressTargets() {
