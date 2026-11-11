@@ -1,8 +1,6 @@
 package hun.mesh.carwithenhance.hook;
 
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.ImageView;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
@@ -13,12 +11,14 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 /**
- * 无歌词时自动放大封面；有歌词时恢复普通布局。
+ * 无歌词时放大封面；有歌词时恢复普通布局。
  *
- * 逆向结论（当前版本走 v2 卡片系统，旧 CardMusicView 已不再使用）：
- *  - 实际媒体卡片：com.carwith.launcher.card.v2.widget.MusicViewA（父类 BaseMusicView）。
- *  - 歌词存在性由 na.c.v0() 可靠给出（字段 n 为已解析歌词列表，非空即有词）。
- *  - MusicViewA 的封面为 ImageView（字段 a0 或通过最大 ImageView 兜底定位）。
+ * 当前版本使用 v2 卡片系统：
+ *  - 媒体卡片：com.carwith.launcher.card.v2.widget.MusicViewA（父类 BaseMusicView）。
+ *  - 歌词有无由 na.c.v0() 的字段 n（歌词列表）给出，非空即有词。
+ *  - 原生封面放大由 MusicViewA.v0(Z)（写 prefer_media_card_bg）+
+ *    MusicViewA.H0()（读取该 pref 并通过 Handler 调用 I0(Z) 切布局）完成，
+ *    即点击封面“变大变小”的同一套原生逻辑。
  */
 public class CardLyricLayoutHook implements IHook {
     private static final String CARD_V2 = "com.carwith.launcher.card.v2.widget.MusicViewA";
@@ -121,72 +121,18 @@ public class CardLyricLayoutHook implements IHook {
             @Override
             public void run() {
                 try {
-                    applyManualScale(card, !hasLyric);
+                    applyNativeCover(card, noLyric);
                 } catch (Throwable t) {
-                    XLog.e(">> [歌词布局] 应用封面失败", t);
+                    XLog.e(">> [歌词布局] 原生封面切换失败", t);
                 }
             }
         });
     }
 
-    private void applyManualScale(View card, boolean noLyric) {
-        View cover = findCover(card);
-        if (cover == null) {
-            XLog.i(">> [歌词布局] 未找到封面 ImageView");
-            return;
-        }
-        float target = noLyric ? 1.45f : 1f;
-        if (Math.abs(cover.getScaleX() - target) < 0.01f) {
-            return;
-        }
-        cover.setPivotX(cover.getWidth() / 2f);
-        cover.setPivotY(cover.getHeight() / 2f);
-        cover.setScaleX(target);
-        cover.setScaleY(target);
-        XLog.i(">> [歌词布局] " + (noLyric ? "无歌词 → 放大封面 " : "有歌词 → 恢复封面 ")
-                + cover.getClass().getSimpleName() + " " + cover.getWidth() + "x" + cover.getHeight());
-    }
-
-    private View findCover(View card) {
-        // 专辑封面通常是卡片中最大的 ImageView，优先取最大者，避免误缩放小图标
-        View largest = findLargestImageView(card);
-        if (largest != null && largest.getWidth() >= 80 && largest.getHeight() >= 80) {
-            return largest;
-        }
-        View k0 = readField(card, "k0");
-        if (k0 != null && k0.getWidth() > 0 && k0.getHeight() > 0) {
-            if (k0 instanceof ImageView) {
-                return k0;
-            }
-            return findLargestImageView(k0);
-        }
-        return largest;
-    }
-
-    private View findLargestImageView(View root) {
-        View best = null;
-        int bestArea = 0;
-        if (root instanceof ImageView) {
-            int a = root.getWidth() * root.getHeight();
-            if (a > bestArea) {
-                best = root;
-                bestArea = a;
-            }
-        }
-        if (root instanceof ViewGroup) {
-            ViewGroup g = (ViewGroup) root;
-            for (int i = 0; i < g.getChildCount(); i++) {
-                View v = findLargestImageView(g.getChildAt(i));
-                if (v != null) {
-                    int a = v.getWidth() * v.getHeight();
-                    if (a > bestArea) {
-                        best = v;
-                        bestArea = a;
-                    }
-                }
-            }
-        }
-        return best;
+    private void applyNativeCover(View card, boolean enlarge) {
+        XposedHelpers.callMethod(card, "v0", enlarge); // 写 prefer_media_card_bg
+        XposedHelpers.callMethod(card, "H0");          // 读 pref 并走 Handler 切布局
+        XLog.i(">> [歌词布局] " + (enlarge ? "无歌词 → 原生放大封面" : "有歌词 → 原生恢复封面"));
     }
 
     @SuppressWarnings("unchecked")
