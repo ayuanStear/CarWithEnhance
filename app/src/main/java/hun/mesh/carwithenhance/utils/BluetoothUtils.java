@@ -17,7 +17,6 @@ public class BluetoothUtils {
         }
         try {
             final BluetoothDevice remoteDevice = defaultAdapter.getRemoteDevice(str);
-            XLog.i(">> [蓝牙工具] 准备断开设备 " + str + " 的通话音频 (HEADSET)...");
             defaultAdapter.getProfileProxy(context, new BluetoothProfile.ServiceListener() { // from class: hun.mesh.carwithenhance.utils.BluetoothUtils.1
                 @Override // android.bluetooth.BluetoothProfile.ServiceListener
                 public void onServiceConnected(int i, BluetoothProfile bluetoothProfile) {
@@ -25,7 +24,6 @@ public class BluetoothUtils {
                         Method method = bluetoothProfile.getClass().getMethod("disconnect", BluetoothDevice.class);
                         method.setAccessible(true);
                         method.invoke(bluetoothProfile, remoteDevice);
-                        XLog.i(">> [蓝牙工具] 成功调用断开通话音频 HEADSET");
                         defaultAdapter.closeProfileProxy(i, bluetoothProfile);
                     } catch (Exception e) {
                         XLog.e("断开 HEADSET Profile 失败: ", e);
@@ -36,7 +34,6 @@ public class BluetoothUtils {
                 public void onServiceDisconnected(int i) {
                 }
             }, 1);
-            XLog.i(">> [蓝牙工具] 准备断开设备 " + str + " 的媒体音频 (A2DP)...");
             defaultAdapter.getProfileProxy(context, new BluetoothProfile.ServiceListener() { // from class: hun.mesh.carwithenhance.utils.BluetoothUtils.2
                 @Override // android.bluetooth.BluetoothProfile.ServiceListener
                 public void onServiceConnected(int i, BluetoothProfile bluetoothProfile) {
@@ -44,7 +41,6 @@ public class BluetoothUtils {
                         Method method = bluetoothProfile.getClass().getMethod("disconnect", BluetoothDevice.class);
                         method.setAccessible(true);
                         method.invoke(bluetoothProfile, remoteDevice);
-                        XLog.i(">> [蓝牙工具] 成功调用断开媒体音频 A2DP");
                         defaultAdapter.closeProfileProxy(i, bluetoothProfile);
                     } catch (Exception e) {
                         XLog.e("断开 A2DP Profile 失败: ", e);

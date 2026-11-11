@@ -32,7 +32,6 @@ public final class MediaTabSelectionHook implements IHook {
             hookSetCurrentItem(viewPager, 1);
             hookSetCurrentItem(viewPager, 2);
             installed = true;
-            XLog.i("[媒体页签] 详情页返回后恢复根页签已注册");
         } catch (Throwable th) {
             XLog.e("[媒体页签] 注册失败，保留宿主默认返回行为", th);
         }

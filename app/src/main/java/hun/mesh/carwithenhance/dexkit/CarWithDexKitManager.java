@@ -172,7 +172,6 @@ public final class CarWithDexKitManager {
             autoPlayClass = t0Var.b().a;
             String str2 = t0Var.b().b;
             autoPlayMethod = str2;
-            XLog.i("[CarWithDexKit]: 找到 AutoPlayHook 目标 -> " + autoPlayClass + "." + str2);
         } else {
             XLog.e("[CarWithDexKit]: 未找到或匹配到多个 AutoPlayHook 目标，请检查匹配条件");
         }
@@ -181,7 +180,6 @@ public final class CarWithDexKitManager {
             qpClass = t0Var2.b().a;
             String str3 = t0Var2.b().b;
             qpMethod = str3;
-            XLog.i("[CarWithDexKit]: 找到 QPHook 目标 -> " + qpClass + "." + str3);
         } else {
             XLog.e("[CarWithDexKit]: 未找到或匹配到多个 QPHook 目标，请检查匹配条件");
         }
@@ -190,7 +188,6 @@ public final class CarWithDexKitManager {
             blurClass = t0Var3.b().a;
             String str4 = t0Var3.b().b;
             blurMethod = str4;
-            XLog.i("[CarWithDexKit]: 找到 BlurCapabilityHook 目标 -> " + blurClass + "." + str4);
         } else {
             XLog.e("[CarWithDexKit]: 未找到或匹配到多个 BlurCapabilityHook 目标，请检查匹配条件");
         }
@@ -199,7 +196,6 @@ public final class CarWithDexKitManager {
             settingsClass = t0Var4.b().a;
             String str5 = t0Var4.b().b;
             settingsMethod = str5;
-            XLog.i("[CarWithDexKit]: 找到 SettingsHook 目标 -> " + settingsClass + "." + str5);
         } else {
             XLog.e("[CarWithDexKit]: 未找到或匹配到多个 SettingsHook 目标，请检查匹配条件");
         }
@@ -236,7 +232,6 @@ public final class CarWithDexKitManager {
             if (nVar != null) {
                 String strB = nVar.b();
                 settingsAdapterClass = strB;
-                XLog.i("[CarWithDexKit]: 找到 SettingsAdapter 类 -> " + strB);
                 t0 t0Var5 = (t0) dexKitBridge.c(new h(i4)).a();
                 String str6 = t0Var5 != null ? t0Var5.b().b : "";
                 t0 t0Var6 = (t0) dexKitBridge.c(new h(2)).a();
@@ -250,7 +245,6 @@ public final class CarWithDexKitManager {
                 }
                 String strM = r.m(arrayList, ",", null, 62);
                 settingsAdapterMethods = strM;
-                XLog.i("[CarWithDexKit]: 找到 SettingsAdapter 目标方法 -> ".concat(strM));
             } else {
                 XLog.e("[CarWithDexKit]: 未找到或匹配到多个 SettingsAdapter 类目标，请检查匹配条件");
             }
@@ -258,7 +252,6 @@ public final class CarWithDexKitManager {
             if (t0Var7 != null) {
                 String str7 = t0Var7.b().a;
                 ucarSettingsFragmentClass = str7;
-                XLog.i("[CarWithDexKit]: 找到 UCarScreenSettingsFragment 目标 -> " + str7);
             } else {
                 XLog.e("[CarWithDexKit]: 未找到或匹配到多个 UCarScreenSettingsFragment 目标，请检查匹配条件");
             }
@@ -267,7 +260,6 @@ public final class CarWithDexKitManager {
                 bluetoothClass = t0Var9.b().a;
                 String str9 = t0Var9.b().b;
                 bluetoothMethod = str9;
-                XLog.i("[CarWithDexKit]: 找到 BluetoothHook 目标 -> " + bluetoothClass + "." + str9);
             } else {
                 XLog.e("[CarWithDexKit]: 未找到或匹配到多个 BluetoothHook 目标，请检查匹配条件");
             }
@@ -276,7 +268,6 @@ public final class CarWithDexKitManager {
                 castControllerClass = t0Var10.b().a;
                 String str10 = t0Var10.b().b;
                 castControllerConnectMethod = str10;
-                XLog.i("[CarWithDexKit]: 找到 CastController 连接目标 -> " + castControllerClass + "." + str10);
                 t0 t0Var11 = (t0) dexKitBridge.c(new h(7)).a();
                 if (t0Var11 == null || (str = t0Var11.b().b) == null) {
                     str = "displayDisconnected";
@@ -290,7 +281,6 @@ public final class CarWithDexKitManager {
                 mapConfigClass = t0Var12.b().a;
                 String str11 = t0Var12.b().b;
                 cruiseMethod = str11;
-                XLog.i("[CarWithDexKit]: 找到 isCruise 目标 -> " + mapConfigClass + "." + str11);
             } else {
                 XLog.e("[CarWithDexKit]: 未找到 isCruise 目标方法");
             }
@@ -302,7 +292,6 @@ public final class CarWithDexKitManager {
             onShowNavInfoClass = t0Var13.b().a;
             String str12 = t0Var13.b().b;
             onShowNavInfoMethod = str12;
-            XLog.i("[CarWithDexKit]: 找到 onShowNavInfo 目标 -> " + onShowNavInfoClass + "." + str12);
         } catch (Throwable th) {
             lock.unlock();
             throw th;
@@ -715,11 +704,9 @@ public final class CarWithDexKitManager {
             String string = sharedPreferences.getString("KEY_LAST_APP_VERSION_NAME", "");
             long j = sharedPreferences.getLong("KEY_LAST_MODULE_BUILD_TIME", -1L);
             if (q.a(str, string) && BuildConfig.BUILD_TIME == j) {
-                XLog.i("[CarWithDexKit]: 宿主版本未变，且模块未重新编译，直接使用缓存。");
                 loadFromCache(sharedPreferences);
                 return;
             }
-            XLog.i("[CarWithDexKit]: 宿主升级或模块重新编译，开始全量搜索。");
             System.loadLibrary("dexkit");
             String str2 = loadPackageParam.appInfo.sourceDir;
             str2.getClass();
@@ -728,7 +715,6 @@ public final class CarWithDexKitManager {
                 CarWithDexKitManager carWithDexKitManager = INSTANCE;
                 carWithDexKitManager.resolveTargets(dexKitBridge);
                 carWithDexKitManager.saveToCache(sharedPreferences, str);
-                XLog.i("[CarWithDexKit]: 全量搜索完成并已更新缓存。");
                 dexKitBridge.close();
             } catch (Throwable th) {
                 try {

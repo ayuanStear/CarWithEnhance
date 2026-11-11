@@ -193,7 +193,6 @@ public final class NcmLyrics {
         synchronized (CACHE) {
             Found hit = CACHE.get(key);
             if (hit != null) {
-                XLog.i("[MCNcm] cached: " + (hit == NONE ? "no match" : hit.id));
                 return hit == NONE ? null : hit;
             }
         }
@@ -221,8 +220,6 @@ public final class NcmLyrics {
             return null;
         }
         if (!searchIsHonest()) {
-            XLog.i("[MCNcm] not remembering the miss for " + q + ": the search is not answering "
-                    + "honestly right now");
             return null;
         }
         synchronized (CACHE) {
@@ -301,12 +298,9 @@ public final class NcmLyrics {
                     return true;
                 }
             }
-            XLog.i("[MCNcm] the search is serving decoys: " + HEALTH_TERMS + " came back without "
-                    + HEALTH_ID + " in " + songs.length() + " results");
             return false;
         } catch (Throwable t) {
             // Same argument as a null body: not knowing is not evidence of lying.
-            XLog.i("[MCNcm] could not check the search's honesty: " + t);
             return true;
         }
     }
@@ -351,7 +345,6 @@ public final class NcmLyrics {
         synchronized (SEARCHES) {
             Searched s = SEARCHES.get(terms);
             if (s != null && android.os.SystemClock.uptimeMillis() - s.at < SEARCH_TTL_MS) {
-                XLog.i("[MCNcm] search for \"" + terms + "\" was already done");
                 return s.json;
             }
         }
@@ -401,8 +394,6 @@ public final class NcmLyrics {
             synchronized (SEARCHES) {
                 SEARCHES.put(terms, new Searched(json, android.os.SystemClock.uptimeMillis()));
             }
-            XLog.i("[MCNcm] searched \"" + terms + "\" ahead of time in "
-                    + (android.os.SystemClock.uptimeMillis() - t0) + "ms");
         } catch (Throwable t) {
             XLog.e("[MCNcm] searching ahead failed: " + t);
         }
@@ -439,7 +430,6 @@ public final class NcmLyrics {
         // this a bad minute on the other side costs the song its lyrics for the whole track, and
         // with it a song that genuinely is not there costs one extra request, once.
         if (id == null && q.durationMs > 0 && !norm(q.title).isEmpty()) {
-            XLog.i("[MCNcm] nothing in the results for " + q + "; asking again");
             // get, not search: the point of asking again is to get a DIFFERENT answer, and a
             // cached one is the same answer by definition. The entry goes too - whatever it
             // holds has just been shown to prove nothing, and leaving it would hand the same
@@ -462,8 +452,6 @@ public final class NcmLyrics {
             // decoys kept for the two minutes this cache runs would hand the same page to the
             // read-ahead and to every other song that searches the same terms.
             forgetSearch(terms);
-            XLog.i("[MCNcm] nothing matched " + q + " (searched \"" + terms
-                    + "\", and its album)");
             return null;
         }
         return lyricsOf(id, started);
@@ -482,13 +470,8 @@ public final class NcmLyrics {
         String romalrc = body(o, "romalrc");
         String use = yrc != null ? yrc : lrc;
         if (use == null) {
-            XLog.i("[MCNcm] " + id + " has no lyrics at all");
             return null;
         }
-        XLog.i("[MCNcm] " + id + " -> " + (yrc != null ? "yrc" : "lrc") + " " + use.length()
-                + " chars" + (tlyric != null ? " + translation" : "")
-                + (romalrc != null ? " + romanisation" : "") + " in "
-                + (android.os.SystemClock.uptimeMillis() - started) + "ms");
         return new Found(id, use, tlyric, yrc != null, romalrc);
     }
 
@@ -532,10 +515,8 @@ public final class NcmLyrics {
                 }
             }
             if (best == null || (durationMs > 0 && bestGap > LYRIC_SEARCH_SLACK_MS)) {
-                XLog.i("[MCNcm] nothing sings \"" + line + "\" near " + durationMs + "ms");
                 return null;
             }
-            XLog.i("[MCNcm] \"" + line + "\" is sung by " + best + ", " + bestGap + "ms off");
             return lyricsOf(best, started);
         } catch (Throwable t) {
             XLog.e("[MCNcm] lyric search failed: " + t);
@@ -638,7 +619,6 @@ public final class NcmLyrics {
             return null;
         }
         if (norm(q.title).isEmpty()) {
-            XLog.i("[MCNcm] session publishes no title to match on");
             return null;
         }
         java.util.List<LyricMatch.Candidate> cands = new java.util.ArrayList<>();
@@ -672,8 +652,6 @@ public final class NcmLyrics {
         }
         LyricMatch.Pick p = LyricMatch.best(cands, new LyricMatch.Wanted(q));
         if (p.candidate != null) {
-            XLog.i("[MCNcm] best " + p.candidate + " scored " + p.score
-                    + (p.passes() ? "" : ", under " + LyricMatch.PASS_SCORE));
         }
         return p.passes() ? p.candidate.id : null;
     }
@@ -705,7 +683,6 @@ public final class NcmLyrics {
             }
             String album = albumOf(json, q);
             if (album == null) {
-                XLog.i("[MCNcm] no album of " + q.artist + "'s called " + q.album);
                 return null;
             }
             json = get(String.format(ALBUM, album));
@@ -714,7 +691,6 @@ public final class NcmLyrics {
             }
             org.json.JSONObject found = new org.json.JSONObject(json).optJSONObject("album");
             String id = found == null ? null : choose(found.optJSONArray("songs"), q);
-            XLog.i("[MCNcm] album " + album + " (" + q.album + ") -> " + id);
             return id;
         } catch (Throwable t) {
             XLog.e("[MCNcm] album lookup failed: " + t);
@@ -873,7 +849,6 @@ public final class NcmLyrics {
         try {
             return android.icu.text.Transliterator.getInstance("Traditional-Simplified");
         } catch (Throwable t) {
-            XLog.i("[MCNcm] no traditional-to-simplified transform here: " + t);
             return null;
         }
     }

@@ -48,9 +48,6 @@ public final class CarWithMediaCapabilities {
             resolveLyrics(lookup);
             resolveLyricSource(lookup);
             resolveMetadataHandler(lookup);
-            XLog.i("[媒体能力] 面板=" + (isPanelReady() ? "READY" : "DEGRADED")
-                    + ", 路由=" + (isRouteReady() ? "READY" : "DEGRADED")
-                    + ", 歌词=" + lyricProgress.size());
         } catch (Throwable th) {
             XLog.e("[媒体能力] 结构解析失败，保留宿主官方行为", th);
         } finally {
@@ -139,7 +136,6 @@ public final class CarWithMediaCapabilities {
         }
         if (target != null) {
             lyricSourceMethod = target.method;
-            XLog.i("[媒体能力] 词源入口 -> " + target.describe());
         } else {
             XLog.e("[媒体能力] 词源入口 MISSING，保留原生歌词行为");
         }
@@ -160,7 +156,6 @@ public final class CarWithMediaCapabilities {
         }
         if (target != null) {
             metadataHandlerMethod = target.method;
-            XLog.i("[媒体能力] 歌词渲染入口 -> " + target.describe());
         } else {
             XLog.e("[媒体能力] 元数据处理 MISSING，歌词即时刷新将降级");
         }
@@ -261,7 +256,6 @@ public final class CarWithMediaCapabilities {
     private static StructuralMethodLookup.Target unique(
             List<StructuralMethodLookup.Target> targets, String label) {
         if (targets.size() == 1) {
-            XLog.i("[媒体能力] " + label + " -> " + targets.get(0).describe());
             return targets.get(0);
         }
         XLog.e("[媒体能力] " + label + " " + (targets.isEmpty() ? "MISSING" : "AMBIGUOUS")

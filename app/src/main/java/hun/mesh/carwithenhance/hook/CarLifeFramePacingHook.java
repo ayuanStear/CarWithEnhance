@@ -22,7 +22,6 @@ public final class CarLifeFramePacingHook implements IHook {
     @Override
     public void onHook(ClassLoader classLoader) {
         final CarLifeFrameTargets targets = CarLifeFrameTargets.resolve(classLoader);
-        XLog.i("[CarLifePacing] 60FPS自动精确调度已启用, " + targets.describe());
 
         installFrameRateHook(targets);
         installConnectionHook(targets);
@@ -112,7 +111,6 @@ public final class CarLifeFramePacingHook implements IHook {
                 }
             });
             preciseRendererInstalled = true;
-            XLog.i("[CarLifePacing] 精确渲染调度 Hook 安装成功");
         } catch (Throwable th) {
             preciseRendererInstalled = false;
             XLog.e("[CarLifePacing] renderDisplayMsg Hook 安装失败", th);
@@ -130,7 +128,6 @@ public final class CarLifeFramePacingHook implements IHook {
             surface.setFrameRate(
                     requestedFps,
                     Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE);
-            XLog.i("[CarLifePacing] 编码 Surface 固定帧率=" + requestedFps);
         } catch (Throwable th) {
             XLog.e("[CarLifePacing] 设置编码 Surface 帧率失败", th);
         }
@@ -145,7 +142,6 @@ public final class CarLifeFramePacingHook implements IHook {
                     null, FramePacerPolicy.fallbackIntervalMillis(60));
             if (!degradedStateLogged) {
                 degradedStateLogged = true;
-                XLog.i("[CarLifePacing] DEGRADED_17MS: mDestFrameInterval=17");
             }
         } catch (Throwable th) {
             XLog.e("[CarLifePacing] 写入 DEGRADED_17MS 失败", th);

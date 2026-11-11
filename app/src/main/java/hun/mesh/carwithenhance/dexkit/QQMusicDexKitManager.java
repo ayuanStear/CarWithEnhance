@@ -302,11 +302,9 @@ public final class QQMusicDexKitManager {
             long j = sharedPreferences.getLong("KEY_LAST_VERSION_CODE", -1L);
             long j2 = sharedPreferences.getLong("KEY_LAST_MODULE_BUILD_TIME", -1L);
             if (longVersionCode == j && BuildConfig.BUILD_TIME == j2) {
-                XLog.i("QQMusicDexKit: QQ音乐版本未变，使用缓存。");
                 loadFromCache(sharedPreferences);
                 return;
             }
-            XLog.i("QQMusicDexKit: QQ音乐版本升级，开始全量搜索核心方法...");
             System.loadLibrary("dexkit");
             str.getClass();
             DexKitBridge dexKitBridge = new DexKitBridge(str);
@@ -430,7 +428,6 @@ public final class QQMusicDexKitManager {
                     fieldMac = ((f0) listN2.get(2)).b().b;
                 }
                 INSTANCE.saveToCache(sharedPreferences, longVersionCode);
-                XLog.i("QQMusicDexKit: 搜索完成！getInstance=" + methodGetInstance + ", updateRoute=" + methodUpdateRoute + ", GearInfoFileds:" + fieldGearType + "," + fieldIntG + "," + fieldIntH + "," + fieldBrand + "," + fieldModel + "," + fieldMac);
                 dexKitBridge.close();
             } catch (Throwable th) {
                 try {

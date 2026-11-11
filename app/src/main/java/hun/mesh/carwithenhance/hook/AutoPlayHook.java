@@ -59,7 +59,6 @@ public class AutoPlayHook implements IHook {
                             if (!QqAutoPlayPolicy.shouldIntercept(true, targetPackage)) {
                                 return;
                             }
-                            XLog.i(">> [QQ完美续播] 已拦截 QQ 音乐的巅峰音乐榜队列，保留当前续播状态");
                             param.setResult(null);
                         } catch (Throwable th) {
                             XLog.e(">> [QQ完美续播] 拦截媒体列表回调失败", th);
@@ -73,8 +72,6 @@ public class AutoPlayHook implements IHook {
         }
 
         if (hooked > 0) {
-            XLog.i(">> [QQ完美续播] Hook 注入成功，兼容回调数=" + hooked
-                    + "，目标类=" + callbackClass.getName());
         } else {
             XLog.e(">> [QQ完美续播] 目标类存在，但没有兼容的媒体列表回调");
         }
@@ -94,17 +91,14 @@ public class AutoPlayHook implements IHook {
         try {
             Object[] target = GenericAutoPlayHooks.resolveQqPlaylistCallback(classLoader);
             if (target != null && target.length >= 1 && target[0] instanceof Class) {
-                XLog.i(">> [QQ完美续播] 使用 DexKit 兼容查询找到回调类");
                 return (Class<?>) target[0];
             }
         } catch (Throwable th) {
-            XLog.i(">> [QQ完美续播] DexKit 兼容查询未命中，尝试旧版类名");
         }
 
         for (String className : FALLBACK_CALLBACK_CLASSES) {
             Class<?> fallback = findCompatibleClass(classLoader, className);
             if (fallback != null) {
-                XLog.i(">> [QQ完美续播] 使用旧版类名兼容: " + className);
                 return fallback;
             }
         }

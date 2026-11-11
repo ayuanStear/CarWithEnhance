@@ -96,11 +96,6 @@ public class LyricSourceHook implements IHook {
                     scheduleFetch(cacheKey, title, artist, album, durationMs, bundle);
                 }
             });
-            XLog.i(">> [词源] lyricInfo/多曲库在线取词优先 + 即时刷新 + 原生兜底 Hook 已注册 -> "
-                    + lyricSource.getDeclaringClass().getName()
-                    + "#" + lyricSource.getName()
-                    + " bundle=" + (bundleField != null)
-                    + " handler=" + (CarWithMediaCapabilities.INSTANCE.getMetadataHandlerMethod() != null));
         } catch (Throwable th) {
             XLog.e(">> [词源] lyricInfo Hook 注册失败", th);
         }
@@ -118,7 +113,6 @@ public class LyricSourceHook implements IHook {
                 try {
                     final String lrc = doFetch(title, artist, album, durationMs);
                     if (lrc == null || lrc.trim().isEmpty()) {
-                        XLog.i(">> [词源] 多曲库在线取词未命中: " + title + " - " + artist);
                         return;
                     }
                     synchronized (LRC_CACHE) {
@@ -147,12 +141,8 @@ public class LyricSourceHook implements IHook {
             if (r == null) {
                 return null;
             }
-            XLog.i(">> [词源] 转换前: words=" + r.words + " len=" + r.body.length() + " head=" + r.body.substring(0, Math.min(60, r.body.length())).replace("\n", " "));
             String lrc = LyricConvert.toLrc(r.body, r.words);
-            XLog.i(">> [词源] 转换后: len=" + (lrc == null ? -1 : lrc.length()) + " head=" + (lrc == null ? "null" : lrc.substring(0, Math.min(60, lrc.length())).replace("\n", " ")));
             if (lrc != null && !lrc.trim().isEmpty()) {
-                XLog.i(">> [词源] 在线歌词命中: " + title + " - " + artist
-                        + " id=" + r.id + " " + lrc.length() + " chars");
             }
             return lrc;
         } catch (Throwable th) {
@@ -163,7 +153,6 @@ public class LyricSourceHook implements IHook {
 
     private static void applyLyric(String cacheKey, Bundle bundle, String lrc) {
         if (!cacheKey.equals(sCurrentSongKey)) {
-            XLog.i(">> [词源] 已切歌，丢弃过期在线歌词: " + cacheKey);
             return;
         }
         try {
@@ -176,12 +165,10 @@ public class LyricSourceHook implements IHook {
         if (host != null && metadata != null && handler != null) {
             try {
                 handler.invoke(host);
-                XLog.i(">> [词源] 在线歌词已即时注入并刷新: " + lrc.length() + " chars");
             } catch (Throwable th) {
                 XLog.e(">> [词源] 即时刷新调用失败", th);
             }
         } else {
-            XLog.i(">> [词源] 在线歌词已缓存（等待下次元数据变化显示）");
         }
     }
 

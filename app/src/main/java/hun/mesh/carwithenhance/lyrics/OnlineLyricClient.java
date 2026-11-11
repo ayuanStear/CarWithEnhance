@@ -64,8 +64,6 @@ public final class OnlineLyricClient {
             conn.setRequestProperty("User-Agent", "HyperMusicCover");
             int code = conn.getResponseCode();
             if (code != 200) {
-                XLog.i("[" + tag + "] HTTP " + code + " in "
-                        + (android.os.SystemClock.uptimeMillis() - started) + "ms");
                 // Nothing of its body is read, so it cannot go back to the pool: let it go.
                 conn.disconnect();
                 return new Reply(null, code);
@@ -113,8 +111,6 @@ public final class OnlineLyricClient {
             }
             int code = conn.getResponseCode();
             if (code != 200) {
-                XLog.i("[" + tag + "] HTTP " + code + " in "
-                        + (android.os.SystemClock.uptimeMillis() - started) + "ms");
                 conn.disconnect();
                 return new Raw(null, code);
             }

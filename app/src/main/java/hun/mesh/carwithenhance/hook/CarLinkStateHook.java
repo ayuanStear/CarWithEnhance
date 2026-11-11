@@ -103,7 +103,6 @@ public class CarLinkStateHook implements IHook {
                     context.getContentResolver(), HookConfigs.DISCONNECT_TARGETS_KEY, targets);
             Settings.Global.putLong(
                     context.getContentResolver(), HookConfigs.DISCONNECT_STOP_AT_KEY, stopAt);
-            XLog.i("[CarLinkStateHook] 已发布一次性断连停止任务，延迟 " + delaySeconds + " 秒");
         } catch (Throwable th) {
             XLog.e("[CarLinkStateHook] 发布断连停止任务失败", th);
         }
@@ -113,8 +112,6 @@ public class CarLinkStateHook implements IHook {
         mHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                XLog.i("[CarLinkStateHook] 断开连接，结束 CarWith 自身进程；"
-                        + "不标记包为 stopped，保留官方蓝牙接收器下次自动唤醒");
                 Process.killProcess(Process.myPid());
             }
         }, 250L);
@@ -141,7 +138,6 @@ public class CarLinkStateHook implements IHook {
         }
         try {
             Settings.Global.putInt(context.getContentResolver(), KEY_CONNECTED, connected);
-            XLog.i("[CarLinkStateHook] 已更新 Settings.Global carwithenhance_is_connected = " + connected);
         } catch (Throwable th) {
             XLog.e("[CarLinkStateHook] 更新 Settings 失败，请检查是否有 WRITE_SECURE_SETTINGS 权限", th);
         }
@@ -149,7 +145,6 @@ public class CarLinkStateHook implements IHook {
 
     private void handleDisconnect() {
         if (!isDisconnectStopEnabled()) {
-            XLog.i("[CarLinkStateHook] 断开停止 CarWith 未启用，保留默认连接流程");
             return;
         }
         int delaySeconds = readDelaySeconds();
@@ -173,7 +168,6 @@ public class CarLinkStateHook implements IHook {
                     new XC_MethodHook() {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
-                            XLog.i("[CarLinkStateHook] 拦截 " + param.method.getName() + "()，CarWith 已连接！");
                             mConnected = true;
                             updateGlobalState(1);
                         }
@@ -186,7 +180,6 @@ public class CarLinkStateHook implements IHook {
                     manager.getCastControllerDisconnectMethod(), new Object[]{new XC_MethodHook() {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
-                            XLog.i("[CarLinkStateHook] 拦截 " + param.method.getName() + "()，CarWith 已断开！");
                             updateGlobalState(0);
                             if (!mConnected && !isGloballyConnected()) {
                                 handleDisconnect();

@@ -67,7 +67,6 @@ public class SystemServerHook {
     }
 
     public static void hook(XC_LoadPackage.LoadPackageParam loadPackageParam) {
-        XLog.i(">> [断连停止] 已加载 system_server Hook");
         hookOneKeyCleanEvent(loadPackageParam.classLoader);
         scheduleObserverRegistration(0);
     }
@@ -99,7 +98,6 @@ public class SystemServerHook {
                                 long persisted = Settings.Global.getLong(
                                         resolver, HookConfigs.ONE_KEY_CLEAN_AT_KEY, 0L);
                                 if (persisted == cleanAt) {
-                                    XLog.i(">> [一键清理] 已记录 OneKeyClean，下一次上车续播将跳过");
                                 } else {
                                     XLog.e(">> [一键清理] 写入未生效，期望=" + cleanAt
                                             + " 实际=" + persisted
@@ -113,7 +111,6 @@ public class SystemServerHook {
                             }
                         }
                     });
-            XLog.i(">> [一键清理] StartupService Hook 注册成功");
         } catch (Throwable th) {
             XLog.e(">> [一键清理] Hook 注册失败，不影响断连停止", th);
         }
@@ -149,7 +146,6 @@ public class SystemServerHook {
                 scheduleDisconnectStop(pendingStopAt);
             }
             sIsObserverRegistered = true;
-            XLog.i(">> [断连停止] 一次性停止任务监听器注册成功");
             return true;
         } catch (Throwable th) {
             return false;
@@ -205,7 +201,6 @@ public class SystemServerHook {
                 }
                 ContentResolver resolver = context.getContentResolver();
                 if (Settings.Global.getInt(resolver, KEY_CONNECTED, 0) == 1) {
-                    XLog.i(">> [断连停止] 已重新连接，取消音乐清理");
                     clearDisconnectStopCommand(resolver);
                     return;
                 }
@@ -218,22 +213,18 @@ public class SystemServerHook {
                             continue;
                         }
                         if (isMusicForeground(context, packageName)) {
-                            XLog.i(">> [断连停止] 音乐应用在前台，跳过: " + packageName);
                             continue;
                         }
                         if (isMusicPlaying(context, packageName)) {
-                            XLog.i(">> [断连停止] 音乐应用正在播放，跳过: " + packageName);
                             continue;
                         }
                         forceStopMusicPackage(context, packageName);
                     }
                 }
                 clearDisconnectStopCommand(resolver);
-                XLog.i(">> [断连停止] 一次性任务完成");
             }
         };
         sStopHandler.postDelayed(sPendingStop, delayMillis);
-        XLog.i(">> [断连停止] 已安排一次性任务，延迟 " + delayMillis + " ms");
     }
 
     private static void clearDisconnectStopCommand(ContentResolver resolver) {
@@ -307,7 +298,6 @@ public class SystemServerHook {
                     (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
             if (activityManager != null) {
                 XposedHelpers.callMethod(activityManager, "forceStopPackage", packageName);
-                XLog.i(">> [断连停止] 已停止音乐进程: " + packageName);
             }
         } catch (Throwable th) {
             XLog.e(">> [断连停止] 停止音乐进程失败: " + packageName, th);

@@ -81,7 +81,6 @@ public final class CarLifeFrameTargets {
                 encodeSurface,
                 renderHandlerClass,
                 renderDisplayMsg);
-        XLog.i(targets.describe());
         return targets;
     }
 

@@ -134,7 +134,6 @@ public final class WebLyrics {
         synchronized (CACHE) {
             Found hit = CACHE.get(key);
             if (hit != null) {
-                XLog.i("[MCWeb] cached: " + (hit == NONE ? "no match" : hit.who() + " " + hit.id));
                 return hit == NONE ? null : hit;
             }
         }
@@ -256,9 +255,6 @@ public final class WebLyrics {
             f = by.ok() ? download(by.body, q, false, ask) : null;
         }
         if (f != null) {
-            XLog.i("[MCWeb] KuGou " + f.id + " -> " + (f.words ? "krc" : "lrc") + " "
-                    + f.body.length() + " chars in "
-                    + (android.os.SystemClock.uptimeMillis() - started) + "ms");
         }
         return f;
     }
@@ -291,8 +287,6 @@ public final class WebLyrics {
         }
         LyricMatch.Pick p = LyricMatch.best(cands, new LyricMatch.Wanted(q));
         if (p.candidate != null) {
-            XLog.i("[MCWeb] KuGou best " + p.candidate + " scored " + p.score
-                    + (p.passes() ? "" : ", under " + LyricMatch.PASS_SCORE));
         }
         return p.passes() ? p.candidate.id : null;
     }
@@ -402,7 +396,6 @@ public final class WebLyrics {
             }
             return inflate(out);
         } catch (Throwable t) {
-            XLog.i("[MCWeb] not a KRC: " + t);
             return null;
         }
     }
@@ -465,8 +458,6 @@ public final class WebLyrics {
             f = found.ok() ? search(found.body, q) : null;
         }
         if (f != null) {
-            XLog.i("[MCWeb] LrcLib " + f.id + " -> " + f.body.length() + " chars in "
-                    + (android.os.SystemClock.uptimeMillis() - started) + "ms");
         }
         return f;
     }

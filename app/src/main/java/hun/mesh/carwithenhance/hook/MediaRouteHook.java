@@ -64,9 +64,6 @@ public final class MediaRouteHook implements IHook {
                 }
             });
             installed = true;
-            XLog.i("[媒体路由] 请求作用域纠偏已注册 -> "
-                    + entry.describe() + " / " + capability.getDeclaringClass().getName()
-                    + "#" + capability.getName());
         } catch (Throwable th) {
             XLog.e("[媒体路由] Hook 注册失败，保留官方路由", th);
         }

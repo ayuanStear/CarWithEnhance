@@ -94,8 +94,6 @@ final class KuwoLyrics {
             if (retry.score > p.score) p = retry;
         }
         if (p.candidate != null) {
-            XLog.i("[" + TAG + "] best " + p.candidate + " scored " + p.score
-                    + (p.passes() ? "" : ", under " + LyricMatch.PASS_SCORE));
         }
         if (!p.passes()) return null;
         Found f = parse(p.candidate.id, lyrics(Long.parseLong(p.candidate.id)));
@@ -103,8 +101,6 @@ final class KuwoLyrics {
         // the rest of the track, only a request to try again.
         if (f == null) answered[0] = false;
         if (f != null) {
-            XLog.i("[" + TAG + "] " + f.id + " -> " + (f.words ? "lrcx" : "lrc") + " in "
-                    + (android.os.SystemClock.uptimeMillis() - started) + "ms");
         }
         return f;
     }

@@ -92,10 +92,6 @@ final class QqLyrics {
             Found f = lyrics(new LyricMatch.Candidate(q.qqId, q.title, q.artist, q.album, 0L, null));
             if (f != null) {
                 answered[0] = true;
-                XLog.i("[" + TAG + "] " + f.id + " by id -> " + (f.words ? "qrc" : "lrc")
-                        + (f.translation != null ? " + translation" : "")
-                        + (f.roma != null ? " + romanisation" : "") + " in "
-                        + (android.os.SystemClock.uptimeMillis() - started) + "ms");
                 return f;
             }
         }
@@ -111,8 +107,6 @@ final class QqLyrics {
             if (retry.score > p.score) p = retry;
         }
         if (p.candidate != null) {
-            XLog.i("[" + TAG + "] best " + p.candidate + " scored " + p.score
-                    + (p.passes() ? "" : ", under " + LyricMatch.PASS_SCORE));
         }
         if (!p.passes()) return null;
         Found f = lyrics(p.candidate);
@@ -120,10 +114,6 @@ final class QqLyrics {
         // the rest of the track, only a request to try again.
         if (f == null) answered[0] = false;
         if (f != null) {
-            XLog.i("[" + TAG + "] " + f.id + " -> " + (f.words ? "qrc" : "lrc")
-                    + (f.translation != null ? " + translation" : "")
-                    + (f.roma != null ? " + romanisation" : "") + " in "
-                    + (android.os.SystemClock.uptimeMillis() - started) + "ms");
         }
         return f;
     }
@@ -273,7 +263,6 @@ final class QqLyrics {
         if (data == null) return null;
         String lyric = QrcCrypt.decrypt(NcmLyrics.str(data, "lyric"));
         if (lyric.isEmpty()) {
-            XLog.i("[" + TAG + "] " + c.id + " has no lyric");
             return null;
         }
         List<TimedText.Line> lines = qrc(lyric);

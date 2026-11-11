@@ -54,7 +54,6 @@ public class CardLyricLayoutHook implements IHook {
                     });
                 } catch (Throwable ignored) {
                 }
-                XLog.i(">> [歌词布局] 卡片捕获 Hook 已注册 " + c.getSimpleName());
             } catch (Throwable t) {
                 XLog.e(">> [歌词布局] 卡片捕获 Hook 失败 " + name, t);
             }
@@ -73,7 +72,6 @@ public class CardLyricLayoutHook implements IHook {
                         boolean hasLyric = n != null && !n.isEmpty();
                         View card = resolveCard(ctl);
                         if (card == null) {
-                            XLog.i(">> [歌词布局] v0 hasLyric=" + hasLyric + " 未匹配卡片");
                             return;
                         }
                         applyCover(card, hasLyric);
@@ -82,7 +80,6 @@ public class CardLyricLayoutHook implements IHook {
                     }
                 }
             });
-            XLog.i(">> [歌词布局] v0 封面联动 Hook 已注册");
         } catch (Throwable t) {
             XLog.e(">> [歌词布局] v0 Hook 失败", t);
         }
@@ -132,7 +129,6 @@ public class CardLyricLayoutHook implements IHook {
     private void applyNativeCover(View card, boolean enlarge) {
         XposedHelpers.callMethod(card, "v0", enlarge); // 写 prefer_media_card_bg
         XposedHelpers.callMethod(card, "H0");          // 读 pref 并走 Handler 切布局
-        XLog.i(">> [歌词布局] " + (enlarge ? "无歌词 → 原生放大封面" : "有歌词 → 原生恢复封面"));
     }
 
     @SuppressWarnings("unchecked")

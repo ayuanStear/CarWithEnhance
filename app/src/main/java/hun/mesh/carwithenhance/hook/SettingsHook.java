@@ -91,7 +91,6 @@ public class SettingsHook implements IHook {
                     int iLastIndexOf = str.lastIndexOf(93);
                     if (iLastIndexOf != -1) {
                         methodHookParam.args[0] = str.substring(0, iLastIndexOf) + "," + string + str.substring(iLastIndexOf);
-                        XLog.i(">> [车机端UI] 成功动态注入[CarWith Enhance]二级菜单！");
                     }
                 }
             }});
@@ -110,7 +109,6 @@ public class SettingsHook implements IHook {
                         if (hookItemFindByKey != null) {
                             boolean z = ((Context) methodHookParam.args[0]).getSharedPreferences(HookConfigs.PREFS_FILE, 0).getBoolean(str, hookItemFindByKey.defaultValue);
                             methodHookParam.setResult(Boolean.valueOf(z));
-                            XLog.i(">> [车机端UI] 拦截读取状态：" + str + " = " + z);
                         }
                     }
                 }});
@@ -161,14 +159,11 @@ public class SettingsHook implements IHook {
                                                     context.getSharedPreferences(HookConfigs.PREFS_FILE, 0).edit().putBoolean(key, checked).apply();
                                                     try {
                                                         Settings.Global.putInt(context.getContentResolver(), key, checked ? 1 : 0);
-                                                        XLog.i(">> [车机端UI] 同步写入 Settings.Global: " + key + " = " + checked);
                                                     } catch (Throwable th) {
                                                         XLog.e(">> [车机端UI] 写入 Settings.Global 失败: " + key, th);
                                                     }
-                                                    XLog.i(">> [车机端UI] 开关 " + key + " 点击翻转，写入 SP: " + checked);
                                                 }
                                             });
-                                            XLog.i(">> [车机端UI] 绑定完成，已成功接管 itemView 点击: key=" + key);
                                         } catch (Throwable th) {
                                             XLog.e(">> [车机端UI] 接管开关点击失败", th);
                                         }
@@ -219,11 +214,9 @@ public class SettingsHook implements IHook {
                                             }
                                             try {
                                                 Settings.Global.putInt(activity.getContentResolver(), hookItem.key, zBooleanValue ? 1 : 0);
-                                                XLog.i(">> [手机端UI] 同步写入 Settings.Global: " + hookItem.key + " = " + zBooleanValue);
                                             } catch (Throwable th3) {
                                                 XLog.e(">> [手机端UI] 写入 Settings.Global 失败: " + hookItem.key, th3);
                                             }
-                                            XLog.i(">> [手机端UI] 开关已更新: " + hookItem.key + " = " + zBooleanValue);
                                             return Boolean.TRUE;
                                         }
                                     })});
@@ -259,7 +252,6 @@ public class SettingsHook implements IHook {
                                 } catch (Throwable th3) {
                                     XLog.e(">> [手机端UI] 注入延迟关闭配置失败", th3);
                                 }
-                                XLog.i(">> [手机端UI] 成功全动态注入[CarWith Enhance]优化设置UI");
                             }
                         }});
                         XposedHelpers.findAndHookMethod(clsFindClass2, "onResume", new Object[]{new XC_MethodHook() { // from class: hun.mesh.carwithenhance.hook.SettingsHook.5
@@ -277,7 +269,6 @@ public class SettingsHook implements IHook {
                                     String str2 = hookItem.key;
                                     SettingsHook.refreshSwitchPref(objCallMethod, str2, sharedPreferences.getBoolean(str2, hookItem.defaultValue));
                                 }
-                                XLog.i(">> [手机端UI] onResume 动态刷新所有开关状态完成");
                             }
                         }});
                     }

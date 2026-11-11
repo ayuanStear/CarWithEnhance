@@ -645,7 +645,6 @@ public final class TrackIdentity {
     /** Xp.log, which the JVM unit tests' android.jar stubs cannot run. */
     private static void log(String msg) {
         try {
-            XLog.i(msg);
         } catch (Throwable ignored) {
         }
     }
