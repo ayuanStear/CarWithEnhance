@@ -1,52 +1,85 @@
 package hun.mesh.carwithenhance.hook;
 
 import android.view.View;
+import android.widget.ImageView;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedHelpers;
 import hun.mesh.carwithenhance.utils.XLog;
 
-/** 观察 CarWith 原生“无歌词视图”切换逻辑，并按歌词有无驱动封面/歌词区布局。 */
+/** 覆盖所有音乐卡片子类，观察原生无歌词切换，并输出封面控件尺寸。 */
 public class CardLyricLayoutHook implements IHook {
+    private static final String[] CARDS = {
+        "com.carwith.launcher.card.CardMusicView",
+        "com.carwith.launcher.card.ModerateCardMusicView",
+        "com.carwith.launcher.card.MusicControlView",
+        "com.carwith.launcher.card.MusicPlayView",
+        "com.carwith.launcher.card.DockerMusicView"
+    };
+    private static volatile boolean sDumped;
+
     @Override
     public void onHook(ClassLoader classLoader) {
-        // 基础卡片的歌词文本入口
-        try {
-            Class<?> base = XposedHelpers.findClass(
-                    "com.carwith.launcher.card.CardMusicView", classLoader);
-            XposedHelpers.findAndHookMethod(base, "setLrcLyricText",
-                    String.class, new XC_MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
-                            String text = (String) param.args[0];
-                            boolean has = text != null && !text.trim().isEmpty();
-                            XLog.i(">> [歌词布局] setLrcLyricText: has=" + has);
-                            toggleNoLyric(param.thisObject, !has);
-                        }
-                    });
-        } catch (Throwable t) {
-            XLog.e(">> [歌词布局] setLrcLyricText 挂钩失败", t);
-        }
-        // Moderate 卡片原生就重写了 setNoLyricViewVisible，观察它的调用
-        try {
-            Class<?> moderate = XposedHelpers.findClass(
-                    "com.carwith.launcher.card.ModerateCardMusicView", classLoader);
-            XposedHelpers.findAndHookMethod(moderate, "setNoLyricViewVisible",
-                    boolean.class, new XC_MethodHook() {
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
-                            XLog.i(">> [歌词布局] 原生 setNoLyricViewVisible(" + param.args[0] + ")");
-                        }
-                    });
-        } catch (Throwable t) {
-            XLog.e(">> [歌词布局] setNoLyricViewVisible 挂钩失败", t);
+        for (String cn : CARDS) {
+            try {
+                Class<?> c = XposedHelpers.findClass(cn, classLoader);
+                hookNoLyric(c);
+                hookLyricText(c);
+                XLog.i(">> [歌词布局] 已挂钩 " + cn);
+            } catch (Throwable ignored) {
+            }
         }
     }
 
-    private static void toggleNoLyric(Object card, boolean noLyric) {
+    private static void hookNoLyric(Class<?> c) {
         try {
-            XposedHelpers.callMethod(card, "setNoLyricViewVisible", noLyric);
-        } catch (Throwable t) {
-            XLog.e(">> [歌词布局] 切换无歌词视图失败", t);
+            XposedHelpers.findAndHookMethod(c, "setNoLyricViewVisible", boolean.class,
+                new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        XLog.i(">> [歌词布局] " + c.getSimpleName()
+                                + ".setNoLyricViewVisible(" + param.args[0] + ")");
+                    }
+                });
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void hookLyricText(Class<?> c) {
+        try {
+            XposedHelpers.findAndHookMethod(c, "setLrcLyricText", String.class,
+                new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        String t = (String) param.args[0];
+                        boolean has = t != null && !t.trim().isEmpty();
+                        XLog.i(">> [歌词布局] " + c.getSimpleName() + ".setLrcLyricText has=" + has);
+                        dumpViewsOnce(param.thisObject);
+                    }
+                });
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void dumpViewsOnce(Object card) {
+        if (sDumped) {
+            return;
+        }
+        synchronized (CardLyricLayoutHook.class) {
+            if (sDumped) {
+                return;
+            }
+            sDumped = true;
+        }
+        for (String n : new String[]{"i", "l", "z", "A", "B", "R", "m", "n", "p"}) {
+            try {
+                Object f = XposedHelpers.getObjectField(card, n);
+                if (f instanceof ImageView) {
+                    ImageView v = (ImageView) f;
+                    XLog.i(">> [歌词布局] " + n + "=" + v.getWidth() + "x" + v.getHeight()
+                            + " vis=" + v.getVisibility());
+                }
+            } catch (Throwable ignored) {
+            }
         }
     }
 }
