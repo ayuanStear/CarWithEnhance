@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** 词源优先：lyricInfo 优先，其次在线取词，最后保留 CarWith 原生歌词读取。 */
+/** 词源优先：lyricInfo 优先，其次在线取词（即时刷新），最后保留 CarWith 原生歌词读取。 */
 public class LyricSourceHook implements IHook {
     private static final String LYRIC_INFO_KEY = "lyricInfo";
     private static final String NATIVE_LYRIC_KEY = "ucar.media.metadata.LYRICS_WHOLE";
@@ -28,6 +28,11 @@ public class LyricSourceHook implements IHook {
     private static final ExecutorService EXEC = Executors.newSingleThreadExecutor();
     private static final Set<String> IN_FLIGHT = ConcurrentHashMap.newKeySet();
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
+
+    // 当前正在显示的歌曲身份，用于保证在线取词回来后仍然对应同一首歌。
+    private static volatile String sCurrentSongKey;
+    private static volatile Object sLyricHost;
+    private static volatile Object sLyricMetadata;
 
     @Override
     public void onHook(ClassLoader classLoader) {
@@ -51,6 +56,8 @@ public class LyricSourceHook implements IHook {
                     if (metadata == null) {
                         return;
                     }
+                    sLyricHost = param.thisObject;
+                    sLyricMetadata = metadata;
                     Bundle bundle = readBundle(metadata, bundleField);
                     if (bundle == null) {
                         return;
@@ -68,19 +75,22 @@ public class LyricSourceHook implements IHook {
                         return;
                     }
                     String cacheKey = OnlineLyricFetcher.key(title, artist, album, durationMs);
+                    sCurrentSongKey = cacheKey;
                     String cached = OnlineLyricFetcher.cached(cacheKey);
                     if (cached != null && !cached.trim().isEmpty()) {
                         param.setResult(cached);
                         return;
                     }
+                    XLog.i(">> [词源] 无歌词，触发在线取词: " + title + " - " + artist + " dur=" + durationMs);
                     scheduleFetch(cacheKey, title, artist, album, durationMs, bundle);
                 }
             });
-            XLog.i(">> [词源] lyricInfo/在线取词优先 + 原生兜底 Hook 已注册 -> "
+            XLog.i(">> [词源] lyricInfo/在线取词优先 + 即时刷新 + 原生兜底 Hook 已注册 -> "
                     + lyricSource.getDeclaringClass().getName()
                     + "#" + lyricSource.getName()
                     + " bundle=" + (bundleField != null)
-                    + " getter=" + (stringGetter != null));
+                    + " getter=" + (stringGetter != null)
+                    + " handler=" + (CarWithMediaCapabilities.INSTANCE.getMetadataHandlerMethod() != null));
         } catch (Throwable th) {
             XLog.e(">> [词源] lyricInfo Hook 注册失败", th);
         }
@@ -99,24 +109,45 @@ public class LyricSourceHook implements IHook {
                     final String lrc = OnlineLyricFetcher.fetch(
                             cacheKey, title, artist, album, durationMs);
                     if (lrc == null || lrc.trim().isEmpty()) {
+                        XLog.i(">> [词源] 在线取词未命中: " + title + " - " + artist);
                         return;
                     }
                     MAIN.post(new Runnable() {
                         @Override
                         public void run() {
-                            try {
-                                bundle.putString(NATIVE_LYRIC_KEY, lrc);
-                            } catch (Throwable ignored) {
-                            }
+                            applyLyric(cacheKey, bundle, lrc);
                         }
                     });
-                    XLog.i(">> [词源] 在线歌词已获取: " + title + " - " + artist
-                            + " (" + lrc.length() + " chars)");
                 } finally {
                     IN_FLIGHT.remove(cacheKey);
                 }
             }
         });
+    }
+
+    private static void applyLyric(String cacheKey, Bundle bundle, String lrc) {
+        // 音轨一致性：取词期间歌曲已经切换，就不把旧歌词注入到当前界面。
+        if (!cacheKey.equals(sCurrentSongKey)) {
+            XLog.i(">> [词源] 已切歌，丢弃过期在线歌词: " + cacheKey);
+            return;
+        }
+        try {
+            bundle.putString(NATIVE_LYRIC_KEY, lrc);
+        } catch (Throwable ignored) {
+        }
+        Object host = sLyricHost;
+        Object metadata = sLyricMetadata;
+        Method handler = CarWithMediaCapabilities.INSTANCE.getMetadataHandlerMethod();
+        if (host != null && metadata != null && handler != null) {
+            try {
+                handler.invoke(host, metadata);
+                XLog.i(">> [词源] 在线歌词已即时注入并刷新: " + lrc.length() + " chars");
+            } catch (Throwable th) {
+                XLog.e(">> [词源] 即时刷新调用失败", th);
+            }
+        } else {
+            XLog.i(">> [词源] 在线歌词已缓存（等待下次元数据变化显示）: " + lrc.length() + " chars");
+        }
     }
 
     private static Field resolveBundleField(Class<?> metadataClass) {

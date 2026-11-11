@@ -27,6 +27,7 @@ public final class CarWithMediaCapabilities {
     private StructuralMethodLookup.Target routeEntry;
     private Method routeCapability;
     private Method lyricSourceMethod;
+    private Method metadataHandlerMethod;
     private List<StructuralMethodLookup.Target> lyricProgress =
             Collections.emptyList();
 
@@ -46,6 +47,7 @@ public final class CarWithMediaCapabilities {
             resolveRoute(lookup);
             resolveLyrics(lookup);
             resolveLyricSource(lookup);
+            resolveMetadataHandler(lookup);
             XLog.i("[媒体能力] 面板=" + (isPanelReady() ? "READY" : "DEGRADED")
                     + ", 路由=" + (isRouteReady() ? "READY" : "DEGRADED")
                     + ", 歌词=" + lyricProgress.size());
@@ -143,6 +145,30 @@ public final class CarWithMediaCapabilities {
         }
     }
 
+    private void resolveMetadataHandler(StructuralMethodLookup lookup) {
+        List<StructuralMethodLookup.Target> candidates = lookup.find(
+                StructuralMethodLookup.QuerySpec.named(
+                        "s",
+                        "void",
+                        "android.support.v4.media.MediaMetadataCompat"));
+        StructuralMethodLookup.Target target = null;
+        for (StructuralMethodLookup.Target candidate : candidates) {
+            if ("na.c".equals(candidate.owner.getName())) {
+                target = candidate;
+                break;
+            }
+        }
+        if (target == null && candidates.size() == 1) {
+            target = candidates.get(0);
+        }
+        if (target != null) {
+            metadataHandlerMethod = target.method;
+            XLog.i("[媒体能力] 元数据处理 -> " + target.describe());
+        } else {
+            XLog.e("[媒体能力] 元数据处理 MISSING，歌词即时刷新将降级");
+        }
+    }
+
     private void resolveLyrics(StructuralMethodLookup lookup) {
         List<StructuralMethodLookup.Target> candidates = lookup.find(
                 StructuralMethodLookup.QuerySpec.named(
@@ -225,6 +251,10 @@ public final class CarWithMediaCapabilities {
 
     public Method getLyricSourceMethod() {
         return lyricSourceMethod;
+    }
+
+    public Method getMetadataHandlerMethod() {
+        return metadataHandlerMethod;
     }
 
     public List<StructuralMethodLookup.Target> getLyricProgressTargets() {
