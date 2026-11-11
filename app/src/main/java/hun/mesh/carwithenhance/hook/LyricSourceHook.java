@@ -8,21 +8,10 @@ import hun.mesh.carwithenhance.utils.XLog;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.Set;
 
-/** 词源优先：优先读取 metadata 中的歌词，缺失则保留 CarWith 原生歌词读取。 */
+/** 词源优先：优先读取 metadata 中的 lyricInfo，缺失则保留 CarWith 原生歌词读取。 */
 public class LyricSourceHook implements IHook {
-    private static final String[] LYRIC_KEYS = {
-        "android.honor.media.metadata.LYRICS_WHOLE",
-        "hicar.media.metadata.LYRICS",
-        "android.media.metadata.LYRIC",
-        "lyricInfo",
-        "LYRIC_INFO",
-        "LyricInfo",
-        "lyric",
-        "lyrics"
-    };
-    private static volatile boolean dumpedOnce;
+    private static final String LYRIC_INFO_KEY = "lyricInfo";
 
     @Override
     public void onHook(ClassLoader classLoader) {
@@ -46,19 +35,16 @@ public class LyricSourceHook implements IHook {
                     if (metadata == null) {
                         return;
                     }
-                    Bundle bundle = readBundle(metadata, bundleField);
-                    dumpKeysOnce(bundle);
-                    String lyric = readLyric(metadata, bundle, stringGetter);
-                    if (lyric != null && !lyric.trim().isEmpty()) {
-                        param.setResult(lyric);
+                    String lyricInfo = readString(
+                            metadata, bundleField, stringGetter, LYRIC_INFO_KEY);
+                    if (lyricInfo != null && !lyricInfo.trim().isEmpty()) {
+                        param.setResult(lyricInfo);
                     }
                 }
             });
-            XLog.i(">> [词源] 歌词优先 + 原生兜底 Hook 已注册 -> "
+            XLog.i(">> [词源] lyricInfo 优先、原生兜底 Hook 已注册 -> "
                     + lyricSource.getDeclaringClass().getName()
-                    + "#" + lyricSource.getName()
-                    + " bundle=" + (bundleField != null)
-                    + " getter=" + (stringGetter != null));
+                    + "#" + lyricSource.getName());
         } catch (Throwable th) {
             XLog.e(">> [词源] lyricInfo Hook 注册失败", th);
         }
@@ -119,34 +105,18 @@ public class LyricSourceHook implements IHook {
         return found;
     }
 
-    private static Bundle readBundle(Object metadata, Field bundleField) {
-        if (bundleField == null) {
-            return null;
-        }
-        try {
-            Object value = bundleField.get(metadata);
-            return value instanceof Bundle ? (Bundle) value : null;
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
-    private static String readLyric(Object metadata, Bundle bundle, Method stringGetter) {
-        for (String key : LYRIC_KEYS) {
-            String lyric = readString(metadata, bundle, stringGetter, key);
-            if (lyric != null && !lyric.trim().isEmpty()) {
-                return lyric;
-            }
-        }
-        return null;
-    }
-
     private static String readString(
-            Object metadata, Bundle bundle, Method stringGetter, String key) {
-        if (bundle != null) {
-            String value = bundle.getString(key);
-            if (value != null) {
-                return value;
+            Object metadata, Field bundleField, Method stringGetter, String key) {
+        if (bundleField != null) {
+            try {
+                Object value = bundleField.get(metadata);
+                if (value instanceof Bundle) {
+                    String fromBundle = ((Bundle) value).getString(key);
+                    if (fromBundle != null) {
+                        return fromBundle;
+                    }
+                }
+            } catch (Throwable ignored) {
             }
         }
         if (stringGetter != null) {
@@ -159,30 +129,5 @@ public class LyricSourceHook implements IHook {
             }
         }
         return null;
-    }
-
-    private static void dumpKeysOnce(Bundle bundle) {
-        if (dumpedOnce || bundle == null) {
-            return;
-        }
-        synchronized (LyricSourceHook.class) {
-            if (dumpedOnce) {
-                return;
-            }
-            dumpedOnce = true;
-        }
-        try {
-            Set<String> keys = bundle.keySet();
-            StringBuilder sb = new StringBuilder(">> [词源] metadata 可用 key: ");
-            for (String key : keys) {
-                if (sb.length() > 500) {
-                    sb.append("...");
-                    break;
-                }
-                sb.append(key).append(' ');
-            }
-            XLog.i(sb.toString().trim());
-        } catch (Throwable ignored) {
-        }
     }
 }
