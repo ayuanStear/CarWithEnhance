@@ -21,13 +21,22 @@ public final class NetEaseLyrics {
         if (terms.isEmpty()) {
             return null;
         }
+        String searchUrl = String.format(SEARCH, enc(terms));
         XLog.i(">> [网易] 搜索: " + terms + " dur=" + durationMs);
-        String json = OnlineLyricClient.get(String.format(SEARCH, enc(terms)));
+        String json = OnlineLyricClient.get(searchUrl);
         if (json == null) {
             XLog.i(">> [网易] 搜索请求失败或网络不可用: " + terms);
             return null;
         }
         String id = pick(json, title, artist, durationMs);
+        if (id == null) {
+            // 网易云搜索偶尔返回无关结果（decoys），重试一次拿另一份答案。
+            XLog.i(">> [网易] 首次未匹配，重试搜索: " + terms);
+            json = OnlineLyricClient.get(searchUrl);
+            if (json != null) {
+                id = pick(json, title, artist, durationMs);
+            }
+        }
         if (id == null) {
             XLog.i(">> [网易] 未匹配到歌曲: " + terms);
             return null;
