@@ -147,10 +147,7 @@ public final class CarWithMediaCapabilities {
 
     private void resolveMetadataHandler(StructuralMethodLookup lookup) {
         List<StructuralMethodLookup.Target> candidates = lookup.find(
-                StructuralMethodLookup.QuerySpec.named(
-                        "s",
-                        "void",
-                        "android.support.v4.media.MediaMetadataCompat"));
+                StructuralMethodLookup.QuerySpec.named("v0", "void"));
         StructuralMethodLookup.Target target = null;
         for (StructuralMethodLookup.Target candidate : candidates) {
             if ("na.c".equals(candidate.owner.getName())) {
@@ -163,7 +160,7 @@ public final class CarWithMediaCapabilities {
         }
         if (target != null) {
             metadataHandlerMethod = target.method;
-            XLog.i("[媒体能力] 元数据处理 -> " + target.describe());
+            XLog.i("[媒体能力] 歌词渲染入口 -> " + target.describe());
         } else {
             XLog.e("[媒体能力] 元数据处理 MISSING，歌词即时刷新将降级");
         }

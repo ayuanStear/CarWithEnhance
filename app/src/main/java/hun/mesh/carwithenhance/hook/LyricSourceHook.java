@@ -173,7 +173,7 @@ public class LyricSourceHook implements IHook {
         Method handler = CarWithMediaCapabilities.INSTANCE.getMetadataHandlerMethod();
         if (host != null && metadata != null && handler != null) {
             try {
-                handler.invoke(host, metadata);
+                handler.invoke(host);
                 XLog.i(">> [词源] 在线歌词已即时注入并刷新: " + lrc.length() + " chars");
             } catch (Throwable th) {
                 XLog.e(">> [词源] 即时刷新调用失败", th);
