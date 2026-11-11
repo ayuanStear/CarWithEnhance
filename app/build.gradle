@@ -10,8 +10,8 @@ android {
         applicationId 'hun.mesh.carwithenhance'
         minSdk 29
         targetSdk 36
-        versionCode 51
-        versionName "2.4.8-fast-wake"
+        versionCode 52
+        versionName "2.4.9-lyric-cross-ecosystem"
         buildConfigField "long", "BUILD_TIME", "${System.currentTimeMillis()}L"
         ndk {
             abiFilters 'arm64-v8a'
