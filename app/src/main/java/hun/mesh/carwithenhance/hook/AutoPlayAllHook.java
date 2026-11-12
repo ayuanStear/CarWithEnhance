@@ -2764,6 +2764,10 @@ public class AutoPlayAllHook implements IHook {
                                 return;
                             }
                             CANNOT_WAKE.remove(str);
+                            if (!hasSession) {
+                                log(context, "等待媒体会话出现 " + str);
+                                return;
+                            }
                             boolean autoPlayEnabled = readPrefAutoPlay();
                             if (!ResumeReadinessPolicy.canSendOfficialResume(
                                     autoPlayEnabled, processRunning, hasSession,
@@ -2778,7 +2782,7 @@ public class AutoPlayAllHook implements IHook {
                                 sResumedPkg = str;
                                 log(context, "会话已就绪，面板已同步，下发官方续播 " + str);
                             } else {
-                                log(context, "等待会话/面板元数据 " + str);
+                                log(context, "会话已就绪，等待面板元数据 " + str);
                             }
                             return;
                         }
