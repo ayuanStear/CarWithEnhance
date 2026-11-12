@@ -8,7 +8,6 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 import hun.mesh.carwithenhance.dexkit.CarWithDexKitManager;
 import hun.mesh.carwithenhance.hook.AutoPlayAllHook;
 import hun.mesh.carwithenhance.hook.AutoPlayHook;
-import hun.mesh.carwithenhance.hook.CarLifeFramePacingHook;
 import hun.mesh.carwithenhance.hook.CardLyricLayoutHook;
 import hun.mesh.carwithenhance.hook.CarLinkStateHook;
 import hun.mesh.carwithenhance.hook.IHook;
@@ -59,20 +58,6 @@ public class MainHook implements IXposedHookLoadPackage {
                         }
                     }
                 }});
-                break;
-            case "com.baidu.carlife.xiaomi":
-                XposedHelpers.findAndHookMethod(
-                        "android.app.Application",
-                        loadPackageParam.classLoader,
-                        "onCreate",
-                        new Object[]{new XC_MethodHook() {
-                            public void afterHookedMethod(MethodHookParam methodHookParam) {
-                                Application application =
-                                        (Application) methodHookParam.thisObject;
-                                new CarLifeFramePacingHook()
-                                        .onHook(loadPackageParam.classLoader);
-                            }
-                        }});
                 break;
         }
     }
