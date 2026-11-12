@@ -12,6 +12,8 @@ import hun.mesh.carwithenhance.hook.CarLinkStateHook;
 import hun.mesh.carwithenhance.hook.DisconnectMusicKillHook;
 import hun.mesh.carwithenhance.hook.IHook;
 import hun.mesh.carwithenhance.hook.LyricSourceHook;
+import hun.mesh.carwithenhance.hook.MediaRouteHook;
+import hun.mesh.carwithenhance.hook.MediaTabSelectionHook;
 import hun.mesh.carwithenhance.hook.SettingsHook;
 import hun.mesh.carwithenhance.media.CarWithMediaCapabilities;
 import hun.mesh.carwithenhance.utils.XLog;
@@ -37,6 +39,8 @@ public class MainHook implements IXposedHookLoadPackage {
                         IHook[] iHookArr = {
                                 new AutoPlayHook(),
                                 new AutoPlayAllHook(),
+                                new MediaRouteHook(),
+                                new MediaTabSelectionHook(),
                                 new LyricSourceHook(),
                                 new SettingsHook(),
                                 new CarLinkStateHook(application)
