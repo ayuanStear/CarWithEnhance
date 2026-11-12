@@ -183,14 +183,7 @@ public final class CarWithDexKitManager {
         } else {
             XLog.e("[CarWithDexKit]: 未找到或匹配到多个 QPHook 目标，请检查匹配条件");
         }
-        t0 t0Var3 = (t0) dexKitBridge.c(new h(11)).a();
-        if (t0Var3 != null) {
-            blurClass = t0Var3.b().a;
-            String str4 = t0Var3.b().b;
-            blurMethod = str4;
-        } else {
-            XLog.e("[CarWithDexKit]: 未找到或匹配到多个 BlurCapabilityHook 目标，请检查匹配条件");
-        }
+
         t0 t0Var4 = (t0) dexKitBridge.c(new h(12)).a();
         if (t0Var4 != null) {
             settingsClass = t0Var4.b().a;
