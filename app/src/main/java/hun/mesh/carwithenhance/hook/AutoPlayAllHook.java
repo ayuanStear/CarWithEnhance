@@ -6,6 +6,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.ContentResolver;
+import android.database.ContentObserver;
+import android.net.Uri;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
@@ -82,7 +85,6 @@ public class AutoPlayAllHook implements IHook {
     private static final long DUPLICATE_RESUME_WINDOW_MS = 600L;
     private static final long PANEL_READY_MAX_WAIT_MS = 2500L;
     private static final long PANEL_REFRESH_MIN_INTERVAL_MS = 600L;
-    private static final long ONE_KEY_CLEAN_MAX_AGE_MS = 60 * 1000L;
     private static final Map<String, String> PLAYBACK_SERVICES;
     private static final String PREFS = "carwithenhance_hooksettings";
     private static final String PREF_MEDIA_APP = "file_prefer_app_091703";
@@ -115,6 +117,7 @@ public class AutoPlayAllHook implements IHook {
     private static SharedPreferences.OnSharedPreferenceChangeListener sPrefListener;
     private static volatile boolean sResumeInFlight;
     private static volatile boolean sSuppressAutoResumeForConnection;
+    private static volatile boolean sOneKeyCleanObserverRegistered;
     private static volatile String sResumedPkg;
     private static volatile long sRetryGen;
     private static final Set<Runnable> sPendingRetryTasks = ConcurrentHashMap.newKeySet();
@@ -1191,10 +1194,8 @@ public class AutoPlayAllHook implements IHook {
         SERVICE_START_UNAVAILABLE.clear();
         sCarConnected = true;
         log(null, "CarWith 已连接");
-        sSuppressAutoResumeForConnection = consumeOneKeyCleanSuppression(sAppCtx);
-        if (sSuppressAutoResumeForConnection) {
-            log(sAppCtx, "一键清理后本次连接跳过自动续播");
-        }
+        clearOneKeyCleanMark(sAppCtx);
+        registerOneKeyCleanObserver();
         if (sAppCtx != null) {
             sPlayingPkg = findPlayingPackage(sAppCtx, null);
             if (sPlayingPkg != null) {
@@ -1238,23 +1239,55 @@ public class AutoPlayAllHook implements IHook {
         }
     }
 
-    private static boolean consumeOneKeyCleanSuppression(Context context) {
+    private static void clearOneKeyCleanMark(Context context) {
         if (context == null) {
-            return false;
+            return;
+        }
+        try {
+            Settings.Global.putLong(
+                    context.getContentResolver(), HookConfigs.ONE_KEY_CLEAN_AT_KEY, 0L);
+        } catch (Throwable th) {
+            logErr(context, "清除一键清理标记失败", th);
+        }
+    }
+
+    private static void registerOneKeyCleanObserver() {
+        if (sAppCtx == null || sOneKeyCleanObserverRegistered) {
+            return;
+        }
+        try {
+            if (sHandler == null) {
+                sHandler = new Handler(Looper.getMainLooper());
+            }
+            Uri uri = Settings.Global.getUriFor(HookConfigs.ONE_KEY_CLEAN_AT_KEY);
+            sAppCtx.getContentResolver().registerContentObserver(
+                    uri, false, new ContentObserver(sHandler) {
+                        @Override
+                        public void onChange(boolean selfChange, Uri uri) {
+                            handleOneKeyCleanDuringConnection();
+                        }
+                    });
+            sOneKeyCleanObserverRegistered = true;
+        } catch (Throwable th) {
+            logErr(sAppCtx, "注册一键清理监听失败", th);
+        }
+    }
+
+    private static void handleOneKeyCleanDuringConnection() {
+        if (!sCarConnected) {
+            return;
         }
         try {
             long cleanAt = Settings.Global.getLong(
-                    context.getContentResolver(), HookConfigs.ONE_KEY_CLEAN_AT_KEY, 0L);
-            if (cleanAt <= 0L) {
-                return false;
+                    sAppCtx.getContentResolver(), HookConfigs.ONE_KEY_CLEAN_AT_KEY, 0L);
+            if (cleanAt > 0L) {
+                sSuppressAutoResumeForConnection = true;
+                cancelRetryTasks();
+                log(sAppCtx, "连接期间一键清理，本次连接不再自动唤醒音乐");
+                clearOneKeyCleanMark(sAppCtx);
             }
-            Settings.Global.putLong(
-                    context.getContentResolver(), HookConfigs.ONE_KEY_CLEAN_AT_KEY, 0L);
-            return ResumeReadinessPolicy.shouldSuppressAfterOneKeyClean(
-                    cleanAt, System.currentTimeMillis(), ONE_KEY_CLEAN_MAX_AGE_MS);
         } catch (Throwable th) {
-            logErr(context, "读取一键清理抑制标记失败", th);
-            return false;
+            logErr(sAppCtx, "处理连接期间一键清理失败", th);
         }
     }
 
@@ -2101,6 +2134,10 @@ public class AutoPlayAllHook implements IHook {
             saveLastOpenedMediaApp(appContext, str);
         }
         markSessionMedia(str);
+        if (sSuppressAutoResumeForConnection) {
+            log(appContext, "一键清理后本次连接不再自动唤醒: " + str);
+            return;
+        }
         if (MediaPlaybackPolicy.shouldSuppressPlayback(
                 isPlaying(appContext, str), playingOtherMedia(appContext, str))) {
             log(appContext, "其他音乐正在播放，跳过自动播放: " + str);
