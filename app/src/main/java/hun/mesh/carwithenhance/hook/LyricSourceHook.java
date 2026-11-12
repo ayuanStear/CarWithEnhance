@@ -141,10 +141,7 @@ public class LyricSourceHook implements IHook {
             if (r == null) {
                 return null;
             }
-            String lrc = LyricConvert.toLrc(r.body, r.words);
-            if (lrc != null && !lrc.trim().isEmpty()) {
-            }
-            return lrc;
+            return LyricConvert.toLrc(r.body, r.words);
         } catch (Throwable th) {
             XLog.e(">> [词源] 多曲库取词失败", th);
             return null;

@@ -8,6 +8,7 @@ import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 import hun.mesh.carwithenhance.utils.XLog;
 import java.lang.ref.WeakReference;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -29,7 +30,8 @@ public class CardLyricLayoutHook implements IHook {
     private static final String NA_C = "na.c";
     private static final long ENLARGE_DEBOUNCE_MS = 900L;
 
-    private static final Map<Object, WeakReference<View>> NA_C_TO_CARD = new WeakHashMap<>();
+    private static final Map<Object, WeakReference<View>> NA_C_TO_CARD =
+            Collections.synchronizedMap(new WeakHashMap<Object, WeakReference<View>>());
     private static final Map<View, Boolean> APPLIED_NO_LYRIC = new WeakHashMap<>();
     private static final Map<View, Runnable> PENDING_ENLARGE = new WeakHashMap<>();
     private static final Handler HANDLER = new Handler(Looper.getMainLooper());
