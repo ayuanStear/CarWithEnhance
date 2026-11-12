@@ -13,7 +13,6 @@ public final class ResumeReadinessPolicy {
             boolean otherMediaPlaying) {
         return autoPlayEnabled
                 && processRunning
-                && hasSession
                 && !targetPlaying
                 && !otherMediaPlaying;
     }
