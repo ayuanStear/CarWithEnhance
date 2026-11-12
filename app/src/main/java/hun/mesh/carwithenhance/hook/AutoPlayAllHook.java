@@ -30,6 +30,7 @@ import hun.mesh.carwithenhance.BuildConfig;
 import hun.mesh.carwithenhance.config.HookConfigs;
 import hun.mesh.carwithenhance.dexkit.CarWithDexKitManager;
 import hun.mesh.carwithenhance.dexkit.GenericAutoPlayHooks;
+import hun.mesh.carwithenhance.media.CarWithMediaCapabilities;
 import hun.mesh.carwithenhance.policy.ExperienceAppPolicy;
 import hun.mesh.carwithenhance.policy.MediaPlaybackPolicy;
 import hun.mesh.carwithenhance.policy.PanelReadyPolicy;
@@ -79,7 +80,8 @@ public class AutoPlayAllHook implements IHook {
     private static final long PAUSE_MAX_WAIT_MS = 1600;
     private static final long PAUSE_POLL_MS = 100;
     private static final long DUPLICATE_RESUME_WINDOW_MS = 600L;
-    private static final long PANEL_READY_MAX_WAIT_MS = 6000L;
+    private static final long PANEL_READY_MAX_WAIT_MS = 2500L;
+    private static final long PANEL_REFRESH_MIN_INTERVAL_MS = 600L;
     private static final long ONE_KEY_CLEAN_MAX_AGE_MS = 5 * 60 * 1000L;
     private static final Map<String, String> PLAYBACK_SERVICES;
     private static final String PREFS = "carwithenhance_hooksettings";
@@ -121,6 +123,7 @@ public class AutoPlayAllHook implements IHook {
     private static volatile String sConfirmedPlayingPkg;
     private static volatile Set<String> sExperiencePackages = Collections.emptySet();
     private static final Map<String, Long> PANEL_WAIT_STARTED = new ConcurrentHashMap();
+    private static final Map<String, Long> PANEL_REFRESH_AT = new ConcurrentHashMap();
     private static final Map<String, MediaController.Callback> SESSION_CALLBACKS = new ConcurrentHashMap();
     private static final Map<String, MediaController> SESSION_CONTROLLERS = new ConcurrentHashMap();
     private static MediaSessionManager.OnActiveSessionsChangedListener sSessionListener;
@@ -803,7 +806,15 @@ public class AutoPlayAllHook implements IHook {
     }
 
     private static void onMediaMetadataChanged(String pkg, MediaController controller) {
-        // 面板同步已移除：元数据变化不再主动刷新控制面板。
+        Context context = sAppCtx;
+        if (context == null || pkg == null || !sCarConnected
+                || !isMediaApp(sCl, pkg) || isNeverKill(pkg)) {
+            return;
+        }
+        PlaybackState state = controller.getPlaybackState();
+        if (state != null && state.getState() == PlaybackState.STATE_PLAYING) {
+            refreshCarWithMediaState(context, pkg, controller);
+        }
     }
 
     public static boolean isCarConnected() {
@@ -836,7 +847,30 @@ public class AutoPlayAllHook implements IHook {
 
     private static void refreshCarWithMediaState(
             final Context context, final String pkg, final MediaController controller) {
-        // 面板同步已移除：控制面板改走 CarWith 原生刷新。
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            if (sHandler == null) {
+                sHandler = new Handler(Looper.getMainLooper());
+            }
+            sHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    refreshCarWithMediaState(context, pkg, controller);
+                }
+            });
+            return;
+        }
+        if (context == null || pkg == null || controller == null) {
+            return;
+        }
+        Long last = PANEL_REFRESH_AT.get(pkg);
+        long now = SystemClock.elapsedRealtime();
+        if (last != null && now - last < PANEL_REFRESH_MIN_INTERVAL_MS) {
+            return;
+        }
+        if (CarWithMediaCapabilities.INSTANCE.tryRefreshPanel(context, pkg, controller)) {
+            PANEL_REFRESH_AT.put(pkg, now);
+            log(context, "panel refreshed " + pkg);
+        }
     }
 
     private static boolean hasPanelIdentity(String pkg) {
@@ -870,6 +904,10 @@ public class AutoPlayAllHook implements IHook {
     private static boolean resumeAfterPanelIfReady(ClassLoader classLoader, String pkg) {
         if (!hasPanelIdentity(pkg) && !panelWaitExceeded(pkg)) {
             return false;
+        }
+        MediaController controller = findController(sAppCtx, pkg);
+        if (controller != null) {
+            refreshCarWithMediaState(sAppCtx, pkg, controller);
         }
         resumeCarWith(classLoader, pkg);
         PANEL_WAIT_STARTED.remove(pkg);

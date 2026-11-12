@@ -1,5 +1,7 @@
 package hun.mesh.carwithenhance.hook;
 
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
@@ -17,16 +19,20 @@ import java.util.WeakHashMap;
  *  - 媒体卡片：com.carwith.launcher.card.v2.widget.MusicViewA（父类 BaseMusicView）。
  *  - 歌词有无由 na.c.v0() 的字段 n（歌词列表）给出，非空即有词。
  *  - 原生封面放大由 MusicViewA.v0(Z)（写 prefer_media_card_bg）+
- *    MusicViewA.H0()（读取该 pref 并通过 Handler 调用 I0(Z) 切布局）完成，
- *    即点击封面“变大变小”的同一套原生逻辑。
+ *    MusicViewA.H0()（读取该 pref 并通过 Handler 调用 I0(Z) 切布局）完成。
+ *
+ * 放大动作做防抖：切歌瞬间歌词列表会短暂为空，若不延迟会先放大再恢复，造成闪烁。
  */
 public class CardLyricLayoutHook implements IHook {
     private static final String CARD_V2 = "com.carwith.launcher.card.v2.widget.MusicViewA";
     private static final String CARD_V2_BASE = "com.carwith.launcher.card.v2.widget.BaseMusicView";
     private static final String NA_C = "na.c";
+    private static final long ENLARGE_DEBOUNCE_MS = 900L;
 
     private static final Map<Object, WeakReference<View>> NA_C_TO_CARD = new WeakHashMap<>();
-    private static final Map<View, Boolean> LAST_NO_LYRIC = new WeakHashMap<>();
+    private static final Map<View, Boolean> APPLIED_NO_LYRIC = new WeakHashMap<>();
+    private static final Map<View, Runnable> PENDING_ENLARGE = new WeakHashMap<>();
+    private static final Handler HANDLER = new Handler(Looper.getMainLooper());
     private static volatile WeakReference<View> LAST_CARD = new WeakReference<>(null);
 
     @Override
@@ -108,25 +114,47 @@ public class CardLyricLayoutHook implements IHook {
     }
 
     private void applyCover(final View card, final boolean hasLyric) {
-        boolean noLyric = !hasLyric;
-        Boolean prev = LAST_NO_LYRIC.get(card);
-        if (prev != null && prev == noLyric) {
-            return;
-        }
-        LAST_NO_LYRIC.put(card, noLyric);
         card.post(new Runnable() {
             @Override
             public void run() {
-                try {
-                    applyNativeCover(card, noLyric);
-                } catch (Throwable t) {
-                    XLog.e(">> [歌词布局] 原生封面切换失败", t);
+                cancelPendingEnlarge(card);
+                if (hasLyric) {
+                    applyNativeCover(card, false);
+                } else {
+                    Runnable enlarge = new Runnable() {
+                        @Override
+                        public void run() {
+                            synchronized (PENDING_ENLARGE) {
+                                PENDING_ENLARGE.remove(card);
+                            }
+                            applyNativeCover(card, true);
+                        }
+                    };
+                    synchronized (PENDING_ENLARGE) {
+                        PENDING_ENLARGE.put(card, enlarge);
+                    }
+                    HANDLER.postDelayed(enlarge, ENLARGE_DEBOUNCE_MS);
                 }
             }
         });
     }
 
+    private void cancelPendingEnlarge(View card) {
+        Runnable pending;
+        synchronized (PENDING_ENLARGE) {
+            pending = PENDING_ENLARGE.remove(card);
+        }
+        if (pending != null) {
+            HANDLER.removeCallbacks(pending);
+        }
+    }
+
     private void applyNativeCover(View card, boolean enlarge) {
+        Boolean applied = APPLIED_NO_LYRIC.get(card);
+        if (applied != null && applied == enlarge) {
+            return;
+        }
+        APPLIED_NO_LYRIC.put(card, enlarge);
         XposedHelpers.callMethod(card, "v0", enlarge); // 写 prefer_media_card_bg
         XposedHelpers.callMethod(card, "H0");          // 读 pref 并走 Handler 切布局
     }
