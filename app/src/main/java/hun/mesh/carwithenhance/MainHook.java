@@ -9,6 +9,7 @@ import hun.mesh.carwithenhance.dexkit.CarWithDexKitManager;
 import hun.mesh.carwithenhance.hook.AutoPlayAllHook;
 import hun.mesh.carwithenhance.hook.AutoPlayHook;
 import hun.mesh.carwithenhance.hook.CarLinkStateHook;
+import hun.mesh.carwithenhance.hook.DisconnectMusicKillHook;
 import hun.mesh.carwithenhance.hook.IHook;
 import hun.mesh.carwithenhance.hook.LyricSourceHook;
 import hun.mesh.carwithenhance.hook.SettingsHook;
@@ -23,6 +24,9 @@ public class MainHook implements IXposedHookLoadPackage {
         String str = loadPackageParam.packageName;
         str.getClass();
         switch (str) {
+            case "android":
+                DisconnectMusicKillHook.hook(loadPackageParam);
+                break;
             case "com.miui.carlink":
                 final ClassLoader classLoader = loadPackageParam.classLoader;
                 XposedHelpers.findAndHookMethod("android.app.Application", classLoader, "onCreate", new Object[]{new XC_MethodHook() { // from class: hun.mesh.carwithenhance.MainHook.1
