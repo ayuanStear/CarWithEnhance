@@ -117,7 +117,11 @@ public class CardLyricLayoutHook implements IHook {
     }
 
     private boolean detectHasLyric(View card, Object ctl) {
-        // 优先看卡片实际渲染的歌词（MinLrcView.getLrcData）
+        // 最可靠：词源 hook 已判定有词（原生 lyricInfo 或在线命中）
+        if (LyricSourceHook.sHasLyric) {
+            return true;
+        }
+        // 兜底：卡片实际渲染的歌词（MinLrcView.getLrcData）
         try {
             Object minLrc = XposedHelpers.getObjectField(card, "l");
             if (minLrc != null) {

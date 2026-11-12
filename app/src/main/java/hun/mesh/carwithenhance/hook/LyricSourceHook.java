@@ -43,6 +43,7 @@ public class LyricSourceHook implements IHook {
     private static volatile String sCurrentSongKey;
     private static volatile Object sLyricHost;
     private static volatile Object sLyricMetadata;
+    public static volatile boolean sHasLyric;
 
     @Override
     public void onHook(ClassLoader classLoader) {
@@ -74,10 +75,12 @@ public class LyricSourceHook implements IHook {
                     }
                     String lyricInfo = bundle.getString(LYRIC_INFO_KEY);
                     if (lyricInfo != null && !lyricInfo.trim().isEmpty()) {
+                        sHasLyric = true;
                         XLog.i(">> [词源] 命中 lyricInfo");
                         param.setResult(lyricInfo);
                         return;
                     }
+                    sHasLyric = false;
                     String title = bundle.getString(KEY_TITLE);
                     String artist = bundle.getString(KEY_ARTIST);
                     String album = bundle.getString(KEY_ALBUM);
@@ -156,6 +159,7 @@ public class LyricSourceHook implements IHook {
         if (!cacheKey.equals(sCurrentSongKey)) {
             return;
         }
+        sHasLyric = true;
         try {
             bundle.putString(NATIVE_LYRIC_KEY, lrc);
         } catch (Throwable ignored) {
