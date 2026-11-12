@@ -82,7 +82,7 @@ public class AutoPlayAllHook implements IHook {
     private static final long DUPLICATE_RESUME_WINDOW_MS = 600L;
     private static final long PANEL_READY_MAX_WAIT_MS = 2500L;
     private static final long PANEL_REFRESH_MIN_INTERVAL_MS = 600L;
-    private static final long ONE_KEY_CLEAN_MAX_AGE_MS = 5 * 60 * 1000L;
+    private static final long ONE_KEY_CLEAN_MAX_AGE_MS = 60 * 1000L;
     private static final Map<String, String> PLAYBACK_SERVICES;
     private static final String PREFS = "carwithenhance_hooksettings";
     private static final String PREF_MEDIA_APP = "file_prefer_app_091703";
