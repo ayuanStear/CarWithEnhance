@@ -91,8 +91,7 @@ public class LyricSourceHook implements IHook {
                         param.setResult(PLACEHOLDER_LRC);
                         return;
                     }
-                    // 无原生词：先显示占位，后台在线取词，命中后再刷新替换。
-                    param.setResult(PLACEHOLDER_LRC);
+                    // 无原生词：后台在线取词，命中/未命中后再刷新替换。
                     scheduleFetch(param.thisObject, cacheKey, title, artist, album, durationMs);
                 }
             });
@@ -118,6 +117,12 @@ public class LyricSourceHook implements IHook {
                         if (MISS_KEYS.size() > 64) {
                             MISS_KEYS.clear();
                         }
+                        MAIN.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                triggerRefresh(host);
+                            }
+                        });
                         return;
                     }
                     XLog.i(">> [歌词] 在线取词命中: " + title + " - " + artist + " len=" + lrc.length());
