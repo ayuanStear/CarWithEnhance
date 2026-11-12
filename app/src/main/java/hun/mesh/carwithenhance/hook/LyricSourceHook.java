@@ -68,8 +68,7 @@ public class LyricSourceHook implements IHook {
                     }
                     String lyricInfo = bundle.getString(LYRIC_INFO_KEY);
                     if (lyricInfo != null && !lyricInfo.trim().isEmpty()) {
-                        // 原生有歌词：走官方原生逻辑，不替换。
-                        param.setResult(lyricInfo);
+                        // 原生有歌词：完全不干预，直接放行走官方原生逻辑。
                         return;
                     }
                     String title = bundle.getString(KEY_TITLE);
