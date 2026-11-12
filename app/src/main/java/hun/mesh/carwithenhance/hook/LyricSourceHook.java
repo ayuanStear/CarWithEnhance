@@ -74,6 +74,7 @@ public class LyricSourceHook implements IHook {
                     }
                     String lyricInfo = bundle.getString(LYRIC_INFO_KEY);
                     if (lyricInfo != null && !lyricInfo.trim().isEmpty()) {
+                        XLog.i(">> [词源] 命中 lyricInfo");
                         param.setResult(lyricInfo);
                         return;
                     }
@@ -93,6 +94,7 @@ public class LyricSourceHook implements IHook {
                             return;
                         }
                     }
+                    XLog.i(">> [词源] 无 lyricInfo，发起在线取词: " + title + " - " + artist);
                     scheduleFetch(cacheKey, title, artist, album, durationMs, bundle);
                 }
             });
@@ -113,8 +115,10 @@ public class LyricSourceHook implements IHook {
                 try {
                     final String lrc = doFetch(title, artist, album, durationMs);
                     if (lrc == null || lrc.trim().isEmpty()) {
+                        XLog.i(">> [词源] 在线取词未命中: " + title + " - " + artist);
                         return;
                     }
+                    XLog.i(">> [词源] 在线取词命中: " + title + " - " + artist + " len=" + lrc.length());
                     synchronized (LRC_CACHE) {
                         LRC_CACHE.put(cacheKey, lrc);
                     }

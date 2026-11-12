@@ -79,6 +79,7 @@ public class CardLyricLayoutHook implements IHook {
                         List<?> n = readField(ctl, "n");
                         boolean hasLyric = n != null && !n.isEmpty();
                         View card = resolveCard(ctl);
+                        XLog.i(">> [歌词布局] v0 hasLyric=" + hasLyric + " card=" + (card != null ? card.getClass().getSimpleName() : "null"));
                         if (card == null) {
                             return;
                         }
@@ -98,6 +99,7 @@ public class CardLyricLayoutHook implements IHook {
             return;
         }
         LAST_CARD = new WeakReference<>(card);
+        XLog.i(">> [歌词布局] 注册卡片 " + card.getClass().getSimpleName());
         try {
             Object naC = XposedHelpers.getObjectField(card, "b");
             if (naC != null) {
@@ -157,6 +159,7 @@ public class CardLyricLayoutHook implements IHook {
             return;
         }
         APPLIED_NO_LYRIC.put(card, enlarge);
+        XLog.i(">> [歌词布局] 封面切换 " + (enlarge ? "放大" : "恢复"));
         XposedHelpers.callMethod(card, "v0", enlarge); // 写 prefer_media_card_bg
         XposedHelpers.callMethod(card, "H0");          // 读 pref 并走 Handler 切布局
     }
