@@ -76,13 +76,12 @@ public class CardLyricLayoutHook implements IHook {
                 protected void afterHookedMethod(MethodHookParam param) {
                     try {
                         Object ctl = param.thisObject;
-                        List<?> n = readField(ctl, "n");
-                        boolean hasLyric = n != null && !n.isEmpty();
                         View card = resolveCard(ctl);
-                        XLog.i(">> [歌词布局] v0 hasLyric=" + hasLyric + " card=" + (card != null ? card.getClass().getSimpleName() : "null"));
                         if (card == null) {
                             return;
                         }
+                        boolean hasLyric = detectHasLyric(card, ctl);
+                        XLog.i(">> [歌词布局] v0 hasLyric=" + hasLyric + " card=" + card.getClass().getSimpleName());
                         applyCover(card, hasLyric);
                     } catch (Throwable t) {
                         XLog.e(">> [歌词布局] v0 处理失败", t);
@@ -115,6 +114,29 @@ public class CardLyricLayoutHook implements IHook {
             return ref.get();
         }
         return LAST_CARD.get();
+    }
+
+    private boolean detectHasLyric(View card, Object ctl) {
+        // 优先看卡片实际渲染的歌词（MinLrcView.getLrcData）
+        try {
+            Object minLrc = XposedHelpers.getObjectField(card, "l");
+            if (minLrc != null) {
+                Object data = XposedHelpers.callMethod(minLrc, "getLrcData");
+                if (data instanceof List && !((List<?>) data).isEmpty()) {
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        // 兜底：na.c 的 n 列表（在线注入场景）
+        try {
+            List<?> n = readField(ctl, "n");
+            if (n != null && !n.isEmpty()) {
+                return true;
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
     }
 
     private void applyCover(final View card, final boolean hasLyric) {
