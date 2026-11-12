@@ -8,14 +8,10 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 import hun.mesh.carwithenhance.dexkit.CarWithDexKitManager;
 import hun.mesh.carwithenhance.hook.AutoPlayAllHook;
 import hun.mesh.carwithenhance.hook.AutoPlayHook;
-import hun.mesh.carwithenhance.hook.CardLyricLayoutHook;
 import hun.mesh.carwithenhance.hook.CarLinkStateHook;
 import hun.mesh.carwithenhance.hook.IHook;
 import hun.mesh.carwithenhance.hook.LyricSourceHook;
-import hun.mesh.carwithenhance.hook.MediaRouteHook;
-import hun.mesh.carwithenhance.hook.MediaTabSelectionHook;
 import hun.mesh.carwithenhance.hook.SettingsHook;
-import hun.mesh.carwithenhance.hook.SystemServerHook;
 import hun.mesh.carwithenhance.media.CarWithMediaCapabilities;
 import hun.mesh.carwithenhance.utils.XLog;
 
@@ -27,9 +23,6 @@ public class MainHook implements IXposedHookLoadPackage {
         String str = loadPackageParam.packageName;
         str.getClass();
         switch (str) {
-            case "android":
-                SystemServerHook.hook(loadPackageParam);
-                break;
             case "com.miui.carlink":
                 final ClassLoader classLoader = loadPackageParam.classLoader;
                 XposedHelpers.findAndHookMethod("android.app.Application", classLoader, "onCreate", new Object[]{new XC_MethodHook() { // from class: hun.mesh.carwithenhance.MainHook.1
@@ -40,12 +33,9 @@ public class MainHook implements IXposedHookLoadPackage {
                         IHook[] iHookArr = {
                                 new AutoPlayHook(),
                                 new AutoPlayAllHook(),
-                                new MediaRouteHook(),
-                                new MediaTabSelectionHook(),
                                 new LyricSourceHook(),
                                 new SettingsHook(),
-                                new CarLinkStateHook(application),
-                                new CardLyricLayoutHook()
+                                new CarLinkStateHook(application)
                         };
                         for (int i = 0; i < iHookArr.length; i++) {
                             IHook iHook = iHookArr[i];

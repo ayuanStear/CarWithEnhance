@@ -20,17 +20,18 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** 词源优先：lyricInfo 优先，其次复用 HyperMusicCover 的多曲库在线取词，最后原生兜底。 */
+/** 歌词专用：原生 lyricInfo 优先；无原生词时复用 HyperMusicCover 多曲库在线取词；取不到则显示固定占位。 */
 public class LyricSourceHook implements IHook {
     private static final String LYRIC_INFO_KEY = "lyricInfo";
-    private static final String NATIVE_LYRIC_KEY = "ucar.media.metadata.LYRICS_WHOLE";
     private static final String KEY_TITLE = "android.media.metadata.TITLE";
     private static final String KEY_ARTIST = "android.media.metadata.ARTIST";
     private static final String KEY_ALBUM = "android.media.metadata.ALBUM";
     private static final String KEY_DURATION = "android.media.metadata.DURATION";
+    private static final String PLACEHOLDER_LRC = "[00:00.00]此歌曲没有填词,请欣赏";
 
     private static final ExecutorService EXEC = Executors.newCachedThreadPool();
     private static final Set<String> IN_FLIGHT = ConcurrentHashMap.newKeySet();
+    private static final Set<String> MISS_KEYS = ConcurrentHashMap.newKeySet();
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final Map<String, String> LRC_CACHE =
             new LinkedHashMap<String, String>(32, 0.75f, true) {
@@ -40,23 +41,17 @@ public class LyricSourceHook implements IHook {
                 }
             };
 
-    private static volatile String sCurrentSongKey;
-    private static volatile Object sLyricHost;
-    private static volatile Object sLyricMetadata;
-    public static volatile boolean sHasLyric;
-
     @Override
     public void onHook(ClassLoader classLoader) {
         Method lyricSource = CarWithMediaCapabilities.INSTANCE.getLyricSourceMethod();
         if (lyricSource == null) {
-            XLog.e(">> [词源] 未解析到歌词入口，保留官方原生歌词行为");
+            XLog.e(">> [歌词] 未解析到歌词入口，保留官方原生歌词行为");
             return;
         }
-        final Class<?> metadataClass = lyricSource.getParameterTypes().length == 1
+        Class<?> metadataClass = lyricSource.getParameterTypes().length == 1
                 ? lyricSource.getParameterTypes()[0]
                 : null;
         final Field bundleField = resolveBundleField(metadataClass);
-        final Method stringGetter = resolveStringGetter(metadataClass);
         try {
             XposedBridge.hookMethod(lyricSource, new XC_MethodHook() {
                 @Override
@@ -67,20 +62,16 @@ public class LyricSourceHook implements IHook {
                     if (metadata == null) {
                         return;
                     }
-                    sLyricHost = param.thisObject;
-                    sLyricMetadata = metadata;
                     Bundle bundle = readBundle(metadata, bundleField);
                     if (bundle == null) {
                         return;
                     }
                     String lyricInfo = bundle.getString(LYRIC_INFO_KEY);
                     if (lyricInfo != null && !lyricInfo.trim().isEmpty()) {
-                        sHasLyric = true;
-                        XLog.i(">> [词源] 命中 lyricInfo");
+                        // 原生有歌词：走官方原生逻辑，不替换。
                         param.setResult(lyricInfo);
                         return;
                     }
-                    sHasLyric = false;
                     String title = bundle.getString(KEY_TITLE);
                     String artist = bundle.getString(KEY_ARTIST);
                     String album = bundle.getString(KEY_ALBUM);
@@ -88,8 +79,7 @@ public class LyricSourceHook implements IHook {
                     if (isEmpty(title) && isEmpty(artist)) {
                         return;
                     }
-                    String cacheKey = title + '|' + artist + '|' + album + '|' + durationMs;
-                    sCurrentSongKey = cacheKey;
+                    String cacheKey = title + '|' + artist + '|' + album;
                     synchronized (LRC_CACHE) {
                         String hit = LRC_CACHE.get(cacheKey);
                         if (hit != null && !hit.trim().isEmpty()) {
@@ -97,18 +87,23 @@ public class LyricSourceHook implements IHook {
                             return;
                         }
                     }
-                    XLog.i(">> [词源] 无 lyricInfo，发起在线取词: " + title + " - " + artist);
-                    scheduleFetch(cacheKey, title, artist, album, durationMs, bundle);
+                    if (MISS_KEYS.contains(cacheKey)) {
+                        param.setResult(PLACEHOLDER_LRC);
+                        return;
+                    }
+                    // 无原生词：先显示占位，后台在线取词，命中后再刷新替换。
+                    param.setResult(PLACEHOLDER_LRC);
+                    scheduleFetch(param.thisObject, cacheKey, title, artist, album, durationMs);
                 }
             });
         } catch (Throwable th) {
-            XLog.e(">> [词源] lyricInfo Hook 注册失败", th);
+            XLog.e(">> [歌词] lyricInfo Hook 注册失败", th);
         }
     }
 
-    private static void scheduleFetch(final String cacheKey, final String title,
-                                      final String artist, final String album,
-                                      final long durationMs, final Bundle bundle) {
+    private static void scheduleFetch(final Object host, final String cacheKey,
+                                      final String title, final String artist,
+                                      final String album, final long durationMs) {
         if (!IN_FLIGHT.add(cacheKey)) {
             return;
         }
@@ -116,19 +111,23 @@ public class LyricSourceHook implements IHook {
             @Override
             public void run() {
                 try {
-                    final String lrc = doFetch(title, artist, album, durationMs);
+                    String lrc = doFetch(title, artist, album, durationMs);
                     if (lrc == null || lrc.trim().isEmpty()) {
-                        XLog.i(">> [词源] 在线取词未命中: " + title + " - " + artist);
+                        XLog.i(">> [歌词] 在线取词未命中: " + title + " - " + artist);
+                        MISS_KEYS.add(cacheKey);
+                        if (MISS_KEYS.size() > 64) {
+                            MISS_KEYS.clear();
+                        }
                         return;
                     }
-                    XLog.i(">> [词源] 在线取词命中: " + title + " - " + artist + " len=" + lrc.length());
+                    XLog.i(">> [歌词] 在线取词命中: " + title + " - " + artist + " len=" + lrc.length());
                     synchronized (LRC_CACHE) {
                         LRC_CACHE.put(cacheKey, lrc);
                     }
                     MAIN.post(new Runnable() {
                         @Override
                         public void run() {
-                            applyLyric(cacheKey, bundle, lrc);
+                            triggerRefresh(host);
                         }
                     });
                 } finally {
@@ -150,30 +149,19 @@ public class LyricSourceHook implements IHook {
             }
             return LyricConvert.toLrc(r.body, r.words);
         } catch (Throwable th) {
-            XLog.e(">> [词源] 多曲库取词失败", th);
+            XLog.e(">> [歌词] 多曲库取词失败", th);
             return null;
         }
     }
 
-    private static void applyLyric(String cacheKey, Bundle bundle, String lrc) {
-        if (!cacheKey.equals(sCurrentSongKey)) {
-            return;
-        }
-        sHasLyric = true;
-        try {
-            bundle.putString(NATIVE_LYRIC_KEY, lrc);
-        } catch (Throwable ignored) {
-        }
-        Object host = sLyricHost;
-        Object metadata = sLyricMetadata;
+    private static void triggerRefresh(Object host) {
         Method handler = CarWithMediaCapabilities.INSTANCE.getMetadataHandlerMethod();
-        if (host != null && metadata != null && handler != null) {
+        if (host != null && handler != null) {
             try {
                 handler.invoke(host);
             } catch (Throwable th) {
-                XLog.e(">> [词源] 即时刷新调用失败", th);
+                XLog.e(">> [歌词] 即时刷新调用失败", th);
             }
-        } else {
         }
     }
 
@@ -205,31 +193,6 @@ public class LyricSourceHook implements IHook {
             cursor = cursor.getSuperclass();
         }
         return null;
-    }
-
-    private static Method resolveStringGetter(Class<?> metadataClass) {
-        if (metadataClass == null) {
-            return null;
-        }
-        Method found = null;
-        for (Method method : metadataClass.getDeclaredMethods()) {
-            if (method.getReturnType() != String.class
-                    || method.getParameterTypes().length != 1
-                    || method.getParameterTypes()[0] != String.class) {
-                continue;
-            }
-            if (found != null) {
-                return null;
-            }
-            found = method;
-        }
-        if (found != null) {
-            try {
-                found.setAccessible(true);
-            } catch (Throwable ignored) {
-            }
-        }
-        return found;
     }
 
     private static Bundle readBundle(Object metadata, Field bundleField) {
