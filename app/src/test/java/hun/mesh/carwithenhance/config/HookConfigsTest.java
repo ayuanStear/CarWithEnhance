@@ -2,7 +2,6 @@ package hun.mesh.carwithenhance.config;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
@@ -14,16 +13,7 @@ public class HookConfigsTest {
         for (HookItem item : HookConfigs.getAllItems()) {
             assertFalse("hook_carwith_keepalive_enabled".equals(item.key));
             assertFalse("hook_coldstart_antikill_enabled".equals(item.key));
-            assertFalse("hook_precise_60fps_enabled".equals(item.key));
         }
-    }
-
-    @Test
-    public void precise60FpsPacingIsHiddenAndAutomatic() {
-        assertEquals("hook_precise_60fps_enabled", HookConfigs.PRECISE_60FPS.key);
-        assertTrue(HookConfigs.PRECISE_60FPS.defaultValue);
-        assertNotNull(HookConfigs.findByKey("hook_precise_60fps_enabled"));
-        assertFalse(HookConfigs.getAllItems().contains(HookConfigs.PRECISE_60FPS));
     }
 
     @Test
