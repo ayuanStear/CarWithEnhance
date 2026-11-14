@@ -24,6 +24,7 @@ public final class CarWithMediaCapabilities {
     private Method callbackRebind;
     private StructuralMethodLookup.Target routeEntry;
     private Method routeCapability;
+    private Method lyricSourceMethod;
 
     private CarWithMediaCapabilities() {
     }
@@ -39,6 +40,7 @@ public final class CarWithMediaCapabilities {
             lookup = new StructuralMethodLookup(apkPath, hostLoader);
             resolvePanel(lookup);
             resolveRoute(lookup);
+            resolveLyricSource(lookup);
         } catch (Throwable th) {
             XLog.e("[媒体能力] 结构解析失败，保留宿主官方行为", th);
         } finally {
@@ -115,6 +117,50 @@ public final class CarWithMediaCapabilities {
         }
     }
 
+    private void resolveLyricSource(StructuralMethodLookup lookup) {
+        StructuralMethodLookup.Target target = pickByNamed(lookup);
+        if (target == null) {
+            target = pickBySignature(lookup);
+        }
+        if (target != null) {
+            lyricSourceMethod = target.method;
+        } else {
+            lyricSourceMethod = null;
+            XLog.e("[媒体能力] 词源入口 MISSING，保留原生歌词行为");
+        }
+    }
+
+    private StructuralMethodLookup.Target pickByNamed(StructuralMethodLookup lookup) {
+        List<StructuralMethodLookup.Target> candidates = lookup.find(
+                StructuralMethodLookup.QuerySpec.named(
+                        "A", "java.lang.String", "android.support.v4.media.MediaMetadataCompat"));
+        StructuralMethodLookup.Target target = preferNaC(candidates);
+        if (target == null && candidates.size() == 1) {
+            target = candidates.get(0);
+        }
+        return target;
+    }
+
+    private StructuralMethodLookup.Target pickBySignature(StructuralMethodLookup lookup) {
+        List<StructuralMethodLookup.Target> candidates = lookup.find(
+                StructuralMethodLookup.QuerySpec.signature(
+                        "java.lang.String", "android.support.v4.media.MediaMetadataCompat"));
+        StructuralMethodLookup.Target target = preferNaC(candidates);
+        if (target == null && candidates.size() == 1) {
+            target = candidates.get(0);
+        }
+        return target;
+    }
+
+    private static StructuralMethodLookup.Target preferNaC(
+            List<StructuralMethodLookup.Target> candidates) {
+        for (StructuralMethodLookup.Target candidate : candidates) {
+            if ("na.c".equals(candidate.owner.getName())) {
+                return candidate;
+            }
+        }
+        return null;
+    }
     public boolean tryRefreshPanel(
             Context context, String packageName, MediaController controller) {
         if (!isPanelReady()) {
@@ -187,6 +233,10 @@ public final class CarWithMediaCapabilities {
 
     public Method getRouteCapability() {
         return routeCapability;
+    }
+
+    public Method getLyricSourceMethod() {
+        return lyricSourceMethod;
     }
 
     private static StructuralMethodLookup.Target unique(
@@ -306,3 +356,5 @@ public final class CarWithMediaCapabilities {
         }
     }
 }
+
+

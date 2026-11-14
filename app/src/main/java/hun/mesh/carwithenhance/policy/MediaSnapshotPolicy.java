@@ -20,7 +20,8 @@ public final class MediaSnapshotPolicy {
                 || !previous.artist.equals(current.artist)
                 || !previous.album.equals(current.album)
                 || previous.durationMillis != current.durationMillis
-                || !previous.artworkToken.equals(current.artworkToken)) {
+                || !previous.artworkToken.equals(current.artworkToken)
+                || !previous.lyricsToken.equals(current.lyricsToken)) {
             return true;
         }
         return previous.playbackState != current.playbackState
@@ -50,6 +51,7 @@ public final class MediaSnapshotPolicy {
                     previous.album,
                     previous.durationMillis,
                     previous.artworkToken,
+                    previous.lyricsToken,
                     current.playbackState,
                     current.playbackSpeed,
                     current.actions);

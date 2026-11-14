@@ -37,6 +37,8 @@ import hun.mesh.carwithenhance.dexkit.StructuralMethodLookup;
 import hun.mesh.carwithenhance.media.CarWithMediaCapabilities;
 import hun.mesh.carwithenhance.policy.ExperienceAppPolicy;
 import hun.mesh.carwithenhance.policy.MediaPlaybackPolicy;
+import hun.mesh.carwithenhance.policy.MediaSnapshot;
+import hun.mesh.carwithenhance.policy.MediaSnapshotPolicy;
 import hun.mesh.carwithenhance.policy.PanelReadyPolicy;
 import hun.mesh.carwithenhance.policy.ResumeReadinessPolicy;
 import hun.mesh.carwithenhance.utils.AppUtils;
@@ -130,6 +132,7 @@ public class AutoPlayAllHook implements IHook {
     private static volatile Set<String> sExperiencePackages = Collections.emptySet();
     private static final Map<String, Long> PANEL_WAIT_STARTED = new ConcurrentHashMap();
     private static final Map<String, Long> PANEL_REFRESH_AT = new ConcurrentHashMap();
+    private static final Map<String, MediaSnapshot> PANEL_SNAPSHOT = new ConcurrentHashMap();
     private static final Map<String, MediaController.Callback> SESSION_CALLBACKS = new ConcurrentHashMap();
     private static final Map<String, MediaController> SESSION_CONTROLLERS = new ConcurrentHashMap();
     private static MediaSessionManager.OnActiveSessionsChangedListener sSessionListener;
@@ -204,8 +207,9 @@ public class AutoPlayAllHook implements IHook {
         NEVER_KILL = new String[]{"com.autonavi.minimap", "com.baidu.BaiduMap", "com.tencent.map", "com.google.android.apps.maps", "com.miui.carlink", BuildConfig.APPLICATION_ID};
         HashMap map2 = new HashMap();
         KNOWN_SERVICES = map2;
-        map2.put("com.luna.music", "com.luna.biz.playing.player.PlayerService");
-        map2.put("com.netease.cloudmusic", "com.netease.cloudmusic.module.ucar.UCarService");
+        // QQ 音乐走 MediaBrowserService（BROWSE_ACTION）动态发现即可拿到完整
+        // metadata 与封面；网易云/汽水音乐不再硬编码其私有服务，统一对齐该绑定
+        // 方式，避免私有服务连接成功但 metadata/封面尚未就绪时提前续播。
         map2.put("com.baidu.netdisk", "com.baidu.netdisk.service.NetdiskMediaBrowserService");
         map.put("com.miui.player", "com.miui.player.service.MediaPlaybackService");
         map.put("com.luna.music", "com.luna.biz.playing.player.PlayerService");
@@ -886,7 +890,9 @@ public class AutoPlayAllHook implements IHook {
         if (pkg.equals(sPlayingPkg)) {
             if (sCarConnected) {
                 sConfirmedPlayingPkg = pkg;
-                refreshCarWithMediaState(context, pkg, controller);
+                if (shouldRebindPanel(pkg, controller)) {
+                    refreshCarWithMediaState(context, pkg, controller);
+                }
             }
             return;
         }
@@ -928,6 +934,50 @@ public class AutoPlayAllHook implements IHook {
         }
     }
 
+    private static boolean shouldRebindPanel(String pkg, MediaController controller) {
+        MediaSnapshot current = snapshotOf(pkg, controller);
+        MediaSnapshot previous = PANEL_SNAPSHOT.get(pkg);
+        boolean refresh = MediaSnapshotPolicy.shouldRefresh(previous, current);
+        if (refresh) {
+            PANEL_SNAPSHOT.put(pkg, current);
+        }
+        return refresh;
+    }
+
+    private static MediaSnapshot snapshotOf(String pkg, MediaController controller) {
+        MediaMetadata metadata = null;
+        PlaybackState state = null;
+        try {
+            metadata = controller == null ? null : controller.getMetadata();
+            state = controller == null ? null : controller.getPlaybackState();
+        } catch (Throwable ignored) {
+            return null;
+        }
+        String mediaId = metadata == null ? null : metadata.getString(MediaMetadata.METADATA_KEY_MEDIA_ID);
+        String title = metadata == null ? null : metadata.getString(MediaMetadata.METADATA_KEY_TITLE);
+        String artist = metadata == null ? null : metadata.getString(MediaMetadata.METADATA_KEY_ARTIST);
+        String album = metadata == null ? null : metadata.getString(MediaMetadata.METADATA_KEY_ALBUM);
+        long duration = metadata == null ? 0L : metadata.getLong(MediaMetadata.METADATA_KEY_DURATION);
+        String artworkToken = metadata == null ? null : metadata.getString(MediaMetadata.METADATA_KEY_ART_URI);
+        if (artworkToken == null && metadata != null) {
+            artworkToken = metadata.getString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI);
+        }
+        String lyricsToken = null;
+        if (metadata != null) {
+            lyricsToken = metadata.getString("lyricInfo");
+            if (lyricsToken == null) {
+                lyricsToken = metadata.getString("rawLyric");
+            }
+            if (lyricsToken == null) {
+                lyricsToken = metadata.getString("android.media.metadata.LYRICS");
+            }
+        }
+        int stateVal = state == null ? PlaybackState.STATE_NONE : state.getState();
+        float speed = state == null ? 0f : state.getPlaybackSpeed();
+        long actions = state == null ? 0L : state.getActions();
+        return new MediaSnapshot(pkg, mediaId, title, artist, album, duration,
+                artworkToken, lyricsToken, stateVal, speed, actions);
+    }
     private static void onMediaMetadataChanged(String pkg, MediaController controller) {
         Context context = sAppCtx;
         if (context == null || pkg == null || !sCarConnected
@@ -936,7 +986,9 @@ public class AutoPlayAllHook implements IHook {
         }
         PlaybackState state = controller.getPlaybackState();
         if (state != null && state.getState() == PlaybackState.STATE_PLAYING) {
-            refreshCarWithMediaState(context, pkg, controller, true);
+            if (shouldRebindPanel(pkg, controller)) {
+                refreshCarWithMediaState(context, pkg, controller);
+            }
         }
     }
 
@@ -1812,6 +1864,7 @@ public class AutoPlayAllHook implements IHook {
         unregisterSessionCallbacks();
         sConfirmedPlayingPkg = null;
         PANEL_WAIT_STARTED.clear();
+        PANEL_SNAPSHOT.clear();
         sLastAcceptedPkg = null;
         sActiveWokePkg = null;
         SESSION_MEDIA.clear();
@@ -2949,6 +3002,16 @@ public class AutoPlayAllHook implements IHook {
     }
 
 }
+
+
+
+
+
+
+
+
+
+
 
 
 

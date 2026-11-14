@@ -9,6 +9,7 @@ public final class MediaSnapshot {
     public final String album;
     public final long durationMillis;
     public final String artworkToken;
+    public final String lyricsToken;
     public final int playbackState;
     public final float playbackSpeed;
     public final long actions;
@@ -21,6 +22,7 @@ public final class MediaSnapshot {
             String album,
             long durationMillis,
             String artworkToken,
+            String lyricsToken,
             int playbackState,
             float playbackSpeed,
             long actions) {
@@ -31,6 +33,7 @@ public final class MediaSnapshot {
         this.album = safe(album);
         this.durationMillis = Math.max(0L, durationMillis);
         this.artworkToken = safe(artworkToken);
+        this.lyricsToken = safe(lyricsToken);
         this.playbackState = playbackState;
         this.playbackSpeed = playbackSpeed;
         this.actions = actions;

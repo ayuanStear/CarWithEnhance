@@ -21,6 +21,7 @@ public class MediaSnapshotPolicyTest {
                 "album",
                 180_000L,
                 artwork,
+                "lyrics",
                 state,
                 1.0f,
                 actions);
@@ -36,6 +37,25 @@ public class MediaSnapshotPolicyTest {
     public void nextTrackInSamePackageRefreshesPanel() {
         MediaSnapshot first = snapshot("1", "First", "cover-1", 3, 1L);
         MediaSnapshot second = snapshot("2", "Second", "cover-2", 3, 1L);
+
+        assertTrue(MediaSnapshotPolicy.shouldRefresh(first, second));
+    }
+
+    @Test
+    public void lyricsChangeRefreshesPanelEvenWhenTitleUnchanged() {
+        MediaSnapshot first = snapshot("1", "First", "cover-1", 3, 1L);
+        MediaSnapshot second = new MediaSnapshot(
+                "com.netease.cloudmusic",
+                "1",
+                "First",
+                "artist",
+                "album",
+                180_000L,
+                "cover-1",
+                "lyrics-v2",
+                3,
+                1.0f,
+                1L);
 
         assertTrue(MediaSnapshotPolicy.shouldRefresh(first, second));
     }
@@ -67,6 +87,7 @@ public class MediaSnapshotPolicyTest {
                 "",
                 0L,
                 "",
+                "",
                 3,
                 1.0f,
                 1L);
@@ -89,6 +110,7 @@ public class MediaSnapshotPolicyTest {
                 "",
                 "",
                 0L,
+                "",
                 "",
                 2,
                 1.0f,
