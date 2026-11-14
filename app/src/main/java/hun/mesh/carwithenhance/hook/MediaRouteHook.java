@@ -98,7 +98,6 @@ public final class MediaRouteHook implements IHook {
                 request.packageName.equals(requestedPackage),
                 targetIsCurrent,
                 sessionReady,
-                officialAllows,
                 customCapable,
                 prefersNative);
         if (!force) {
@@ -152,3 +151,4 @@ public final class MediaRouteHook implements IHook {
         }
     }
 }
+
