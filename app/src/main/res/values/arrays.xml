@@ -2,6 +2,8 @@
 <resources>
     <string-array name="lsposed_scopes">
         <item>com.miui.carlink</item>
+        <item>com.miui.voiceassist</item>
+        <item>com.miui.voicetrigger</item>
         <item>android</item>
         <item>com.baidu.carlife.xiaomi</item>
         <item>com.tencent.qqmusic</item>

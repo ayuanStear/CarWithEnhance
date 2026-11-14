@@ -151,6 +151,12 @@ public final class StructuralMethodLookup implements Closeable {
                 int parameterCount) {
             return new QuerySpec(null, returnType, null, parameterCount, literal);
         }
+
+        public static QuerySpec signature(
+                String returnType,
+                String... parameterTypes) {
+            return new QuerySpec(null, returnType, parameterTypes, -1, null);
+        }
     }
 
     public static final class Target {
@@ -167,3 +173,4 @@ public final class StructuralMethodLookup implements Closeable {
         }
     }
 }
+

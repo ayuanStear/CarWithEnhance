@@ -7,8 +7,6 @@ import hun.mesh.carwithenhance.utils.XLog;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /** Resolves the host media facilities used by optional enhancements. */
@@ -26,10 +24,6 @@ public final class CarWithMediaCapabilities {
     private Method callbackRebind;
     private StructuralMethodLookup.Target routeEntry;
     private Method routeCapability;
-    private Method lyricSourceMethod;
-    private Method metadataHandlerMethod;
-    private List<StructuralMethodLookup.Target> lyricProgress =
-            Collections.emptyList();
 
     private CarWithMediaCapabilities() {
     }
@@ -45,9 +39,6 @@ public final class CarWithMediaCapabilities {
             lookup = new StructuralMethodLookup(apkPath, hostLoader);
             resolvePanel(lookup);
             resolveRoute(lookup);
-            resolveLyrics(lookup);
-            resolveLyricSource(lookup);
-            resolveMetadataHandler(lookup);
         } catch (Throwable th) {
             XLog.e("[媒体能力] 结构解析失败，保留宿主官方行为", th);
         } finally {
@@ -100,7 +91,13 @@ public final class CarWithMediaCapabilities {
         if (callbackNoise != null) {
             callbackSingleton = singletonFactory(callbackNoise.owner);
             callbackNotify = namedMethod(callbackNoise.owner, "d", Void.TYPE, String.class);
+            if (callbackNotify == null) {
+                callbackNotify = firstSignatureMethod(callbackNoise.owner, Void.TYPE, String.class);
+            }
             callbackRebind = namedMethod(callbackNoise.owner, "h", Void.TYPE, String.class);
+            if (callbackRebind == null) {
+                callbackRebind = firstSignatureMethod(callbackNoise.owner, Void.TYPE, String.class);
+            }
         }
     }
 
@@ -116,62 +113,6 @@ public final class CarWithMediaCapabilities {
         if (service != null) {
             routeCapability = uniqueMethod(service.owner, Boolean.TYPE, String.class);
         }
-    }
-
-    private void resolveLyricSource(StructuralMethodLookup lookup) {
-        List<StructuralMethodLookup.Target> candidates = lookup.find(
-                StructuralMethodLookup.QuerySpec.named(
-                        "A",
-                        "java.lang.String",
-                        "android.support.v4.media.MediaMetadataCompat"));
-        StructuralMethodLookup.Target target = null;
-        for (StructuralMethodLookup.Target candidate : candidates) {
-            if ("na.c".equals(candidate.owner.getName())) {
-                target = candidate;
-                break;
-            }
-        }
-        if (target == null && candidates.size() == 1) {
-            target = candidates.get(0);
-        }
-        if (target != null) {
-            lyricSourceMethod = target.method;
-        } else {
-            XLog.e("[媒体能力] 词源入口 MISSING，保留原生歌词行为");
-        }
-    }
-
-    private void resolveMetadataHandler(StructuralMethodLookup lookup) {
-        List<StructuralMethodLookup.Target> candidates = lookup.find(
-                StructuralMethodLookup.QuerySpec.named("v0", "void"));
-        StructuralMethodLookup.Target target = null;
-        for (StructuralMethodLookup.Target candidate : candidates) {
-            if ("na.c".equals(candidate.owner.getName())) {
-                target = candidate;
-                break;
-            }
-        }
-        if (target == null && candidates.size() == 1) {
-            target = candidates.get(0);
-        }
-        if (target != null) {
-            metadataHandlerMethod = target.method;
-        } else {
-            XLog.e("[媒体能力] 元数据处理 MISSING，歌词即时刷新将降级");
-        }
-    }
-
-    private void resolveLyrics(StructuralMethodLookup lookup) {
-        List<StructuralMethodLookup.Target> candidates = lookup.find(
-                StructuralMethodLookup.QuerySpec.named(
-                        "setCurrentProgress", "void", "long"));
-        ArrayList<StructuralMethodLookup.Target> filtered = new ArrayList<>();
-        for (StructuralMethodLookup.Target candidate : candidates) {
-            if (hasLyricField(candidate.owner)) {
-                filtered.add(candidate);
-            }
-        }
-        lyricProgress = Collections.unmodifiableList(filtered);
     }
 
     public boolean tryRefreshPanel(
@@ -220,6 +161,13 @@ public final class CarWithMediaCapabilities {
         if (!isPanelReady()) {
             return null;
         }
+        return getCurrentMediaPackageRaw();
+    }
+
+    public String getCurrentMediaPackageRaw() {
+        if (mediaManagerSingleton == null || mediaManagerCurrentPackage == null) {
+            return null;
+        }
         try {
             Object manager = mediaManagerSingleton.invoke(null);
             Object value = mediaManagerCurrentPackage.get(manager);
@@ -239,18 +187,6 @@ public final class CarWithMediaCapabilities {
 
     public Method getRouteCapability() {
         return routeCapability;
-    }
-
-    public Method getLyricSourceMethod() {
-        return lyricSourceMethod;
-    }
-
-    public Method getMetadataHandlerMethod() {
-        return metadataHandlerMethod;
-    }
-
-    public List<StructuralMethodLookup.Target> getLyricProgressTargets() {
-        return lyricProgress;
     }
 
     private static StructuralMethodLookup.Target unique(
@@ -315,6 +251,22 @@ public final class CarWithMediaCapabilities {
         }
     }
 
+    private static Method firstSignatureMethod(
+            Class<?> owner,
+            Class<?> returnType,
+            Class<?>... parameterTypes) {
+        for (Method method : owner.getDeclaredMethods()) {
+            if (Modifier.isStatic(method.getModifiers())
+                    || method.getReturnType() != returnType
+                    || !sameParameters(method.getParameterTypes(), parameterTypes)) {
+                continue;
+            }
+            makeAccessible(method);
+            return method;
+        }
+        return null;
+    }
+
     private static Field uniqueStringField(Class<?> owner) {
         Field found = null;
         for (Field field : owner.getDeclaredFields()) {
@@ -333,62 +285,6 @@ public final class CarWithMediaCapabilities {
             }
         }
         return found;
-    }
-
-    private static boolean hasLyricField(Class<?> owner) {
-        Class<?> type = owner;
-        while (type != null && type != Object.class) {
-            for (Field field : type.getDeclaredFields()) {
-                if (!Modifier.isStatic(field.getModifiers())
-                        && !field.isSynthetic()
-                        && lyricMethod(field.getType()) != null) {
-                    return true;
-                }
-            }
-            type = type.getSuperclass();
-        }
-        return false;
-    }
-
-    public static Field lyricField(Class<?> owner) {
-        Class<?> type = owner;
-        while (type != null && type != Object.class) {
-            for (Field field : type.getDeclaredFields()) {
-                if (!Modifier.isStatic(field.getModifiers())
-                        && !field.isSynthetic()
-                        && lyricMethod(field.getType()) != null) {
-                    try {
-                        field.setAccessible(true);
-                    } catch (Throwable ignored) {
-                    }
-                    return field;
-                }
-            }
-            type = type.getSuperclass();
-        }
-        return null;
-    }
-
-    public static Method lyricMethod(Class<?> type) {
-        if (type == null) {
-            return null;
-        }
-        try {
-            Method method = type.getMethod("setCurrentLryByTime", Long.TYPE);
-            if (method.getReturnType() == Void.TYPE) {
-                return method;
-            }
-        } catch (Throwable ignored) {
-        }
-        try {
-            Method method = type.getDeclaredMethod("setCurrentLryByTime", Long.TYPE);
-            if (method.getReturnType() == Void.TYPE) {
-                method.setAccessible(true);
-                return method;
-            }
-        } catch (Throwable ignored) {
-        }
-        return null;
     }
 
     private static boolean sameParameters(Class<?>[] actual, Class<?>[] expected) {

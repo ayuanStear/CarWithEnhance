@@ -18,10 +18,5 @@
         <meta-data android:name="xposeddescription" android:value="CarWith增强模块 by Mesh_Hun · 稳定性优化版"/>
         <meta-data android:name="xposedminversion" android:value="93"/>
         <meta-data android:name="xposedscope" android:resource="@array/lsposed_scopes"/>
-        <receiver android:exported="true" android:name="hun.mesh.carwithenhance.hook.WakeReceiver">
-            <intent-filter>
-                <action android:name="hun.mesh.carwithenhance.action.WAKE"/>
-            </intent-filter>
-        </receiver>
     </application>
 </manifest>

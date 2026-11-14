@@ -33,6 +33,7 @@ import hun.mesh.carwithenhance.BuildConfig;
 import hun.mesh.carwithenhance.config.HookConfigs;
 import hun.mesh.carwithenhance.dexkit.CarWithDexKitManager;
 import hun.mesh.carwithenhance.dexkit.GenericAutoPlayHooks;
+import hun.mesh.carwithenhance.dexkit.StructuralMethodLookup;
 import hun.mesh.carwithenhance.media.CarWithMediaCapabilities;
 import hun.mesh.carwithenhance.policy.ExperienceAppPolicy;
 import hun.mesh.carwithenhance.policy.MediaPlaybackPolicy;
@@ -42,7 +43,9 @@ import hun.mesh.carwithenhance.utils.AppUtils;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -339,20 +342,26 @@ public class AutoPlayAllHook implements IHook {
                 });
                 log(null, "体验应用转普通列表的钩子已注册");
                 try {
-                    XposedBridge.hookAllMethods(
-                            XposedHelpers.findClass("com.carwith.common.utils.d0", classLoader),
-                            "U", new XC_MethodHook() {
-                                @Override
-                                protected void afterHookedMethod(MethodHookParam param) {
-                                    try {
-                                        Object result = param.getResult();
-                                        if (result instanceof List) {
-                                            ((List) result).removeAll(EXPERIENCE_EXCLUDE);
-                                        }
-                                    } catch (Throwable ignored) {
-                                    }
+                    Method listMethod = resolveExperienceListMethod(classLoader);
+                    XC_MethodHook filterHook = new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            try {
+                                Object result = param.getResult();
+                                if (result instanceof List) {
+                                    ((List) result).removeAll(EXPERIENCE_EXCLUDE);
                                 }
-                            });
+                            } catch (Throwable ignored) {
+                            }
+                        }
+                    };
+                    if (listMethod != null) {
+                        XposedBridge.hookMethod(listMethod, filterHook);
+                    } else {
+                        XposedBridge.hookAllMethods(
+                                XposedHelpers.findClass("com.carwith.common.utils.d0", classLoader),
+                                "U", filterHook);
+                    }
                     log(null, "体验应用列表过滤已注册（排除地图/官方应用）");
                 } catch (Throwable th) {
                     logErr(null, "体验应用列表过滤注册失败", th);
@@ -398,11 +407,123 @@ public class AutoPlayAllHook implements IHook {
     }
 
     /* JADX INFO: Access modifiers changed from: private */
+    private static volatile StructuralMethodLookup sCompatLookup;
+    private static volatile String sCompatApkPath;
+
+    private static StructuralMethodLookup compatLookup(ClassLoader classLoader) {
+        String apkPath = null;
+        try {
+            if (sAppCtx != null) {
+                apkPath = sAppCtx.getApplicationInfo().sourceDir;
+            }
+        } catch (Throwable ignored) {
+        }
+        if (apkPath == null) {
+            return null;
+        }
+        StructuralMethodLookup lookup = sCompatLookup;
+        if (lookup == null || !apkPath.equals(sCompatApkPath)) {
+            try {
+                lookup = new StructuralMethodLookup(apkPath, classLoader);
+                sCompatLookup = lookup;
+                sCompatApkPath = apkPath;
+            } catch (Throwable th) {
+                return null;
+            }
+        }
+        return lookup;
+    }
+
+    private static Object resolveExperienceManager(ClassLoader classLoader) {
+        StructuralMethodLookup lookup = compatLookup(classLoader);
+        if (lookup != null) {
+            List<StructuralMethodLookup.Target> targets = lookup.find(
+                    StructuralMethodLookup.QuerySpec.containing(
+                            "getExperiencePackageList", "java.util.List", 1));
+            for (StructuralMethodLookup.Target target : targets) {
+                for (Method method : target.owner.getDeclaredMethods()) {
+                    if (Modifier.isStatic(method.getModifiers())
+                            && method.getParameterTypes().length == 0
+                            && method.getReturnType() == target.owner) {
+                        try {
+                            method.setAccessible(true);
+                            return method.invoke(null);
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                }
+            }
+        }
+        try {
+            return XposedHelpers.callStaticMethod(
+                    XposedHelpers.findClass("com.carwith.common.utils.d0", classLoader), "R");
+        } catch (Throwable th) {
+            return null;
+        }
+    }
+
+    private static Object resolveCurrentMediaManager(ClassLoader classLoader) {
+        StructuralMethodLookup lookup = compatLookup(classLoader);
+        if (lookup != null) {
+            List<StructuralMethodLookup.Target> targets = lookup.find(
+                    StructuralMethodLookup.QuerySpec.signature("xa.c"));
+            for (StructuralMethodLookup.Target target : targets) {
+                try {
+                    return target.method.invoke(null);
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        try {
+            return XposedHelpers.callStaticMethod(
+                    XposedHelpers.findClass("xa.c", classLoader), "h");
+        } catch (Throwable th) {
+            return null;
+        }
+    }
+
+    private static Method resolveExperienceListMethod(ClassLoader classLoader) {
+        StructuralMethodLookup lookup = compatLookup(classLoader);
+        if (lookup != null) {
+            List<StructuralMethodLookup.Target> targets = lookup.find(
+                    StructuralMethodLookup.QuerySpec.containing(
+                            "getExperiencePackageList", "java.util.List", 1));
+            for (StructuralMethodLookup.Target target : targets) {
+                Class<?>[] params = target.method.getParameterTypes();
+                if (params.length == 1 && params[0] == Integer.TYPE) {
+                    return target.method;
+                }
+            }
+        }
+        return null;
+    }
+    private static Field resolveStringField(Object instance) {
+        if (instance == null) {
+            return null;
+        }
+        try {
+            Field field = XposedHelpers.findField(instance.getClass(), "d");
+            if (field.getType() == String.class) {
+                return field;
+            }
+        } catch (Throwable ignored) {
+        }
+        for (Field field : instance.getClass().getDeclaredFields()) {
+            if (Modifier.isStatic(field.getModifiers()) || field.getType() != String.class) {
+                continue;
+            }
+            try {
+                field.setAccessible(true);
+            } catch (Throwable ignored) {
+            }
+            return field;
+        }
+        return null;
+    }
     public static List<String> experiencePackages(ClassLoader classLoader) {
         LinkedHashSet linkedHashSet = new LinkedHashSet();
         try {
-            Object manager = XposedHelpers.callStaticMethod(
-                    XposedHelpers.findClass("com.carwith.common.utils.d0", classLoader), "R", new Object[0]);
+            Object manager = resolveExperienceManager(classLoader);
             if (manager != null) {
                 int workMode = -1;
                 try {
@@ -439,8 +560,7 @@ public class AutoPlayAllHook implements IHook {
     private static Set<String> officialPackages(ClassLoader classLoader) {
         HashSet<String> result = new HashSet<>();
         try {
-            Object manager = XposedHelpers.callStaticMethod(
-                    XposedHelpers.findClass("com.carwith.common.utils.d0", classLoader), "R", new Object[0]);
+            Object manager = resolveExperienceManager(classLoader);
             Object list = XposedHelpers.callMethod(manager, "P", new Object[0]);
             if (list instanceof List) {
                 for (Object item : (List) list) {
@@ -1120,19 +1240,26 @@ public class AutoPlayAllHook implements IHook {
     }
 
     private static void rememberUsedMediaApp(ClassLoader classLoader, String str) {
-        Object objCallStaticMethod;
         if (classLoader == null || str == null) {
             return;
         }
         try {
-            if (str.length() == 0 || !isMediaApp(classLoader, str) || (objCallStaticMethod = XposedHelpers.callStaticMethod(XposedHelpers.findClass("xa.c", classLoader), "h", new Object[0])) == null) {
+            if (str.length() == 0 || !isMediaApp(classLoader, str)) {
                 return;
             }
-            Object objectField = XposedHelpers.getObjectField(objCallStaticMethod, "d");
+            Object manager = resolveCurrentMediaManager(classLoader);
+            if (manager == null) {
+                return;
+            }
+            Field mediaField = resolveStringField(manager);
+            if (mediaField == null) {
+                return;
+            }
+            Object objectField = mediaField.get(manager);
             if (str.equals(objectField)) {
                 return;
             }
-            XposedHelpers.setObjectField(objCallStaticMethod, "d", str);
+            mediaField.set(manager, str);
             log(sAppCtx, "同步 CarWith 当前媒体应用: " + objectField + " -> " + str);
         } catch (Throwable th) {
             logErr(sAppCtx, "同步 CarWith 媒体应用失败", th);
@@ -1870,8 +1997,16 @@ public class AutoPlayAllHook implements IHook {
 
     private static String carwithLastUsedMediaApp() {
         try {
-            Object objectField = XposedHelpers.getObjectField(XposedHelpers.callStaticMethod(XposedHelpers.findClass("xa.c", sCl), "h", new Object[0]), "d");
-            if ((objectField instanceof String) && ((String) objectField).length() > 0) {
+            Object manager = resolveCurrentMediaManager(sCl);
+            if (manager == null) {
+                return null;
+            }
+            Field mediaField = resolveStringField(manager);
+            if (mediaField == null) {
+                return null;
+            }
+            Object objectField = mediaField.get(manager);
+            if (objectField instanceof String && ((String) objectField).length() > 0) {
                 return (String) objectField;
             }
             return null;
@@ -2808,3 +2943,10 @@ public class AutoPlayAllHook implements IHook {
     }
 
 }
+
+
+
+
+
+
+
