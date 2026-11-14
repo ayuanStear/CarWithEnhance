@@ -27,6 +27,7 @@ targetSdk:   36
 - `AutoPlayAllHook` — 全应用上车续播、媒体面板刷新、切换播放器后清理上个进程。
 - `MediaRouteHook` — 官方路由短暂回退原生页面时，强制回到定制媒体页。
 - `MediaTabSelectionHook` — 从媒体详情页返回时恢复之前选中的根页签（修复网易云“返回都回到精彩推荐”）。
+- `LyricSourceHook` — 无原生歌词时显示“暂无歌词”占位。
 - `SettingsHook` — 注入 CarWith Enhance 设置菜单。
 - `CarLinkStateHook` — 连接状态跟踪，配合断连清理。
 - `CarWakeVoiceHook` — CarWith 投屏时，语音唤醒转车机端小爱（移植自 CarWake v1.18），含语音交互期间的音频静音/恢复。

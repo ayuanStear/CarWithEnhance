@@ -27,6 +27,7 @@ targetSdk:  36
 - `AutoPlayAllHook` — all-app resume on car connect, media panel refresh, and previous-player cleanup after switching.
 - `MediaRouteHook` — forces the custom media page when official routing transiently falls back to the native embedded page.
 - `MediaTabSelectionHook` — restores the selected root tab after returning from a media detail page (fixes NetEase returning to `精彩推荐`).
+- `LyricSourceHook` — shows a `暂无歌词` placeholder when the current track has no native `lyricInfo`.
 - `SettingsHook` — injects the CarWith Enhance settings menu.
 - `CarLinkStateHook` — connection-state tracking for disconnect cleanup.
 - `CarWakeVoiceHook` — while CarWith is casting, redirects voice wake to the car Xiaomi assistant (ported from CarWake v1.18), including audio mute/restore during voice interaction.
