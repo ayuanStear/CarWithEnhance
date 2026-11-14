@@ -936,7 +936,7 @@ public class AutoPlayAllHook implements IHook {
         }
         PlaybackState state = controller.getPlaybackState();
         if (state != null && state.getState() == PlaybackState.STATE_PLAYING) {
-            refreshCarWithMediaState(context, pkg, controller);
+            refreshCarWithMediaState(context, pkg, controller, true);
         }
     }
 
@@ -970,6 +970,12 @@ public class AutoPlayAllHook implements IHook {
 
     private static void refreshCarWithMediaState(
             final Context context, final String pkg, final MediaController controller) {
+        refreshCarWithMediaState(context, pkg, controller, false);
+    }
+
+    private static void refreshCarWithMediaState(
+            final Context context, final String pkg, final MediaController controller,
+            final boolean force) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             if (sHandler == null) {
                 sHandler = new Handler(Looper.getMainLooper());
@@ -977,7 +983,7 @@ public class AutoPlayAllHook implements IHook {
             sHandler.post(new Runnable() {
                 @Override
                 public void run() {
-                    refreshCarWithMediaState(context, pkg, controller);
+                    refreshCarWithMediaState(context, pkg, controller, force);
                 }
             });
             return;
@@ -987,7 +993,7 @@ public class AutoPlayAllHook implements IHook {
         }
         Long last = PANEL_REFRESH_AT.get(pkg);
         long now = SystemClock.elapsedRealtime();
-        if (last != null && now - last < PANEL_REFRESH_MIN_INTERVAL_MS) {
+        if (!force && last != null && now - last < PANEL_REFRESH_MIN_INTERVAL_MS) {
             return;
         }
         if (CarWithMediaCapabilities.INSTANCE.tryRefreshPanel(context, pkg, controller)) {
@@ -2943,6 +2949,8 @@ public class AutoPlayAllHook implements IHook {
     }
 
 }
+
+
 
 
 
