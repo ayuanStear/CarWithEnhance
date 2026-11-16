@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.5.1 - 2026-11-16
+
+- Resume playback only after CarWith has actually rendered the music card or
+  media page, instead of starting audio as soon as a MediaSession appears.
+- Prepare a dead player's MediaBrowserService silently before resuming; no
+  media-play key is sent during cold start.
+- Intercept native media-app launches and route supported players back to the
+  custom CarWith media page.
+- Pre-bind NetEase Cloud Music's `UCarService` before opening its media page so
+  the custom page no longer falls back to the native `PlayerActivity`.
+- Added panel-ready policy tests for metadata and render timeouts.
+
 ## 2.4.6 - 2026-11-09
 
 - Hidden the obsolete `精确60FPS帧调度` switch from CarWith Enhance settings.

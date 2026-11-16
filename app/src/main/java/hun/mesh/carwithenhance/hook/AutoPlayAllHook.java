@@ -88,7 +88,9 @@ public class AutoPlayAllHook implements IHook {
     private static final long PAUSE_MAX_WAIT_MS = 1600;
     private static final long PAUSE_POLL_MS = 100;
     private static final long DUPLICATE_RESUME_WINDOW_MS = 600L;
-    private static final long PANEL_READY_MAX_WAIT_MS = 2500L;
+    private static final long PANEL_METADATA_MAX_WAIT_MS = 4500L;
+    private static final long PANEL_RENDER_MAX_WAIT_MS = 7000L;
+    private static final long PANEL_RENDER_FRESH_MS = 3000L;
     private static final long PANEL_REFRESH_MIN_INTERVAL_MS = 600L;
     private static final Map<String, String> PLAYBACK_SERVICES;
     private static final String PREFS = "carwithenhance_hooksettings";
@@ -124,6 +126,8 @@ public class AutoPlayAllHook implements IHook {
     private static volatile boolean sSuppressAutoResumeForConnection;
     private static volatile boolean sOneKeyCleanObserverRegistered;
     private static volatile String sResumedPkg;
+    private static volatile String sPanelFirstPkg;
+    private static volatile String sEarlyPausedPkg;
     private static volatile long sRetryGen;
     private static final Set<Runnable> sPendingRetryTasks = ConcurrentHashMap.newKeySet();
     private static volatile String sSelectedApp;
@@ -131,6 +135,7 @@ public class AutoPlayAllHook implements IHook {
     private static volatile String sConfirmedPlayingPkg;
     private static volatile Set<String> sExperiencePackages = Collections.emptySet();
     private static final Map<String, Long> PANEL_WAIT_STARTED = new ConcurrentHashMap();
+    private static final Map<String, Long> PANEL_RENDERED_AT = new ConcurrentHashMap();
     private static final Map<String, Long> PANEL_REFRESH_AT = new ConcurrentHashMap();
     private static final Map<String, MediaSnapshot> PANEL_SNAPSHOT = new ConcurrentHashMap();
     private static final Map<String, MediaController.Callback> SESSION_CALLBACKS = new ConcurrentHashMap();
@@ -211,6 +216,11 @@ public class AutoPlayAllHook implements IHook {
         // metadata 与封面；网易云/汽水音乐不再硬编码其私有服务，统一对齐该绑定
         // 方式，避免私有服务连接成功但 metadata/封面尚未就绪时提前续播。
         map2.put("com.baidu.netdisk", "com.baidu.netdisk.service.NetdiskMediaBrowserService");
+        // 网易云对外暴露的 MediaBrowserService。用户点击网易云时先静默绑定它，
+        // 让 MediaSession/metadata 就绪后再进入定制媒体页，避免定制页连接失败
+        // 后又被 CarWith 回退到网易云原生 Activity。
+        map2.put("com.netease.cloudmusic",
+                "com.netease.cloudmusic.module.ucar.UCarService");
         map.put("com.miui.player", "com.miui.player.service.MediaPlaybackService");
         map.put("com.luna.music", "com.luna.biz.playing.player.PlayerService");
     }
@@ -1000,6 +1010,10 @@ public class AutoPlayAllHook implements IHook {
         return sAppCtx;
     }
 
+    public static ClassLoader getHostClassLoader() {
+        return sCl;
+    }
+
     public static boolean isCurrentMediaTarget(String pkg) {
         return pkg != null && sCarConnected
                 && (pkg.equals(sCurrentMediaPkg)
@@ -1016,8 +1030,10 @@ public class AutoPlayAllHook implements IHook {
         if (controller == null || controller.getMetadata() == null) {
             return false;
         }
-        PlaybackState state = controller.getPlaybackState();
-        return state != null && state.getState() != PlaybackState.STATE_NONE;
+        // A freshly bound MediaBrowserService may expose metadata while its
+        // state is still STATE_NONE. That is enough for the custom media page
+        // to connect; playback readiness is checked separately.
+        return true;
     }
 
     private static void refreshCarWithMediaState(
@@ -1069,30 +1085,137 @@ public class AutoPlayAllHook implements IHook {
                 metadata.getString(MediaMetadata.METADATA_KEY_ARTIST));
     }
 
-    private static boolean panelWaitExceeded(String pkg) {
+    private static boolean panelWaitExceeded(String pkg, long maxWaitMs) {
         Long startedAt = PANEL_WAIT_STARTED.get(pkg);
         return startedAt != null
                 && PanelReadyPolicy.panelWaitExceeded(
-                        startedAt, SystemClock.elapsedRealtime(), PANEL_READY_MAX_WAIT_MS);
+                        startedAt, SystemClock.elapsedRealtime(), maxWaitMs);
     }
 
     private static long panelWaitElapsed(String pkg) {
         Long startedAt = PANEL_WAIT_STARTED.get(pkg);
-        return startedAt == null ? -1L : SystemClock.elapsedRealtime() - startedAt;
+        return startedAt == null ? -1L : SystemClock.elapsedRealtime() - startedAt.longValue();
     }
 
-    /** 面板先行：面板就绪（或超时兜底）后先推面板，再下发续播；返回是否已下发 */
+    private static Handler ensureHandler() {
+        if (sHandler == null) {
+            sHandler = new Handler(Looper.getMainLooper());
+        }
+        return sHandler;
+    }
+
+    /** Called by the CarWith card / media-page metadata callback. */
+    static void markPanelRendered(final String pkg) {
+        if (pkg == null || pkg.isEmpty()) {
+            return;
+        }
+        PANEL_RENDERED_AT.put(pkg, Long.valueOf(SystemClock.elapsedRealtime()));
+        if (sAppCtx == null || !sCarConnected || !pkg.equals(sWaitingPkg)) {
+            return;
+        }
+        log(sAppCtx, "面板已渲染: " + pkg);
+        ensureHandler().post(new Runnable() {
+            @Override
+            public void run() {
+                if (pkg.equals(sWaitingPkg) && sCarConnected && !sResumeInFlight) {
+                    resumeAfterPanelIfReady(sCl, pkg);
+                }
+            }
+        });
+    }
+
+    private static boolean panelRecentlyRendered(String pkg) {
+        Long renderedAt = PANEL_RENDERED_AT.get(pkg);
+        return renderedAt != null
+                && SystemClock.elapsedRealtime() - renderedAt.longValue() <= PANEL_RENDER_FRESH_MS;
+    }
+
+    public static String getCurrentMediaPackage() {
+        return CarWithMediaCapabilities.INSTANCE.getCurrentMediaPackage();
+    }
+
+    public static boolean isMediaAppName(String pkg) {
+        return pkg != null && isMediaApp(sCl, pkg);
+    }
+
+    public static void learnCurrentMediaPublic(String pkg) {
+        learnCurrentMedia(pkg);
+    }
+
+    /**
+     * Starts/binds only the player service so the app exposes a MediaSession.
+     * Never sends a media key or calls play(): playback must wait for the panel.
+     */
+    public static boolean prepareMediaSession(Context context, String pkg) {
+        if (context == null || pkg == null || pkg.isEmpty()) {
+            return false;
+        }
+        boolean bound = bindBrowseService(context, pkg);
+        boolean started = false;
+        boolean paused = false;
+        if (!bound) {
+            started = startPlayerService(context, pkg);
+            // Some players auto-play when their playback service is started.
+            // A pause key is harmless when already paused and stops that
+            // accidental start; the real play happens after panel render.
+            paused = sendMediaKey(context, pkg, KeyEvent.KEYCODE_MEDIA_PAUSE);
+        }
+        log(context, "静默准备媒体会话: " + pkg
+                + " (绑定=" + bound + ", 启动服务=" + started
+                + ", 暂停键=" + paused + ")");
+        return bound || started || paused;
+    }
+
+    public static void refreshPanelFor(String pkg) {
+        if (sAppCtx == null || pkg == null || pkg.isEmpty()) {
+            return;
+        }
+        MediaController controller = findController(sAppCtx, pkg);
+        if (controller != null) {
+            refreshCarWithMediaState(sAppCtx, pkg, controller, true);
+        }
+    }
+
+    /** 面板先行：元数据就绪并推送到面板、且面板真正渲染后才下发续播。 */
     private static boolean resumeAfterPanelIfReady(ClassLoader classLoader, String pkg) {
-        if (!hasPanelIdentity(pkg) && !panelWaitExceeded(pkg)) {
+        if (pkg == null || pkg.isEmpty()) {
+            return false;
+        }
+        long now = SystemClock.elapsedRealtime();
+        PANEL_WAIT_STARTED.putIfAbsent(pkg, Long.valueOf(now));
+        Long startedAt = PANEL_WAIT_STARTED.get(pkg);
+        long start = startedAt == null ? now : startedAt.longValue();
+        boolean hasIdentity = hasPanelIdentity(pkg);
+        if (!hasIdentity
+                && !PanelReadyPolicy.panelWaitExceeded(
+                        start, now, PANEL_METADATA_MAX_WAIT_MS)) {
+            log(sAppCtx, "等待面板元数据: " + pkg);
             return false;
         }
         MediaController controller = findController(sAppCtx, pkg);
         if (controller != null) {
-            refreshCarWithMediaState(sAppCtx, pkg, controller);
+            refreshCarWithMediaState(sAppCtx, pkg, controller, true);
         }
-        resumeCarWith(classLoader, pkg);
-        PANEL_WAIT_STARTED.remove(pkg);
-        return true;
+        boolean rendered = panelRecentlyRendered(pkg);
+        long afterPush = SystemClock.elapsedRealtime();
+        if (!PanelReadyPolicy.canStartPlayback(
+                true, rendered, start, afterPush,
+                PANEL_METADATA_MAX_WAIT_MS, PANEL_RENDER_MAX_WAIT_MS)) {
+            log(sAppCtx, "面板已推送，等待卡片/页面渲染: " + pkg);
+            return false;
+        }
+        boolean sent = resumeCarWith(classLoader, pkg);
+        if (sent) {
+            PANEL_WAIT_STARTED.remove(pkg);
+            if (pkg.equals(sPanelFirstPkg)) {
+                sPanelFirstPkg = null;
+                sEarlyPausedPkg = null;
+            }
+            if (pkg.equals(sWaitingPkg)) {
+                sWaitingPkg = null;
+            }
+        }
+        return sent;
     }
 
     private static void killPreviousPlaying(Context context, String previous, String current) {
@@ -1367,10 +1490,13 @@ public class AutoPlayAllHook implements IHook {
         SWITCH_DROPPED.clear();
         sLastStatePkg = null;
         sResumedPkg = null;
+        sPanelFirstPkg = null;
+        sEarlyPausedPkg = null;
         sInitialResumeDone = false;
         sPlayingPkg = null;
         sConfirmedPlayingPkg = null;
         PANEL_WAIT_STARTED.clear();
+        PANEL_RENDERED_AT.clear();
         sLastPkg = null;
         sLastWake = 0L;
         sLastResumePkg = null;
@@ -1497,23 +1623,20 @@ public class AutoPlayAllHook implements IHook {
                 boolean processRunning = isProcessRunning(context, lastUsedMediaApp);
                 boolean hasSession = hasSession(context, lastUsedMediaApp);
                 boolean targetPlaying = isPlaying(context, lastUsedMediaApp);
+                if (!targetPlaying) {
+                    sPanelFirstPkg = lastUsedMediaApp;
+                }
                 log(context, "本次连接待续播: " + lastUsedMediaApp + " (CarWith自带续播开关=" + autoPlayEnabled + ")");
                 learnCurrentMedia(lastUsedMediaApp);
                 if (!processRunning && isMediaApp(sCl, lastUsedMediaApp)) {
-                    log(context, "连接即唤醒上次使用的播放器: " + lastUsedMediaApp);
+                    log(context, "连接即静默准备上次使用的播放器: " + lastUsedMediaApp);
                     CAR_OPEN_AT.put(lastUsedMediaApp, Long.valueOf(SystemClock.elapsedRealtime()));
                     markSessionMedia(lastUsedMediaApp);
                     WOKE.add(lastUsedMediaApp);
                     sActiveWokePkg = lastUsedMediaApp;
-                    sendMediaButton(context, lastUsedMediaApp);
                     PANEL_WAIT_STARTED.put(lastUsedMediaApp, SystemClock.elapsedRealtime());
                     sWaitingPkg = lastUsedMediaApp;
-                    if (ResumeReadinessPolicy.canSendOfficialResume(
-                            autoPlayEnabled, processRunning, hasSession, targetPlaying, otherMediaPlaying)) {
-                        resumeAfterPanelIfReady(sCl, lastUsedMediaApp);
-                    }
-                    startPlayerService(context, lastUsedMediaApp);
-                    bindBrowseService(context, lastUsedMediaApp);
+                    prepareMediaSession(context, lastUsedMediaApp);
                     startRetryLoop(sCl, lastUsedMediaApp);
                     return;
                 }
@@ -1864,9 +1987,12 @@ public class AutoPlayAllHook implements IHook {
         unregisterSessionCallbacks();
         sConfirmedPlayingPkg = null;
         PANEL_WAIT_STARTED.clear();
+        PANEL_RENDERED_AT.clear();
         PANEL_SNAPSHOT.clear();
         sLastAcceptedPkg = null;
         sActiveWokePkg = null;
+        sPanelFirstPkg = null;
+        sEarlyPausedPkg = null;
         SESSION_MEDIA.clear();
         WOKE.clear();
         cancelRetryTasks();
@@ -2366,6 +2492,9 @@ public class AutoPlayAllHook implements IHook {
         if (hasSession(appContext, str) && isProcessRunning(appContext, str)) {
             boolean targetPlaying = isPlaying(appContext, str);
             boolean otherMediaPlaying = playingOtherMedia(appContext, str);
+            if (!targetPlaying) {
+                sPanelFirstPkg = str;
+            }
             if (!ResumeReadinessPolicy.canSendResumeForExistingSession(
                     readPrefAutoPlay(),
                     targetPlaying,
@@ -2496,17 +2625,17 @@ public class AutoPlayAllHook implements IHook {
 
     /* JADX INFO: Access modifiers changed from: private */
     public static void wakeInBackground(Context context, String str) {
-        boolean zIsProcessRunning = isProcessRunning(context, str);
-        boolean zSendMediaButton = sendMediaButton(context, str);
-        boolean zStartPlayerService = startPlayerService(context, str);
-        boolean zPlayViaSession = playViaSession(context, str);
-        bindBrowseService(context, str);
+        boolean wasRunning = isProcessRunning(context, str);
+        // 只让播放器进程/媒体浏览服务就绪，不发送媒体键、不调用 play()。
+        // 真正播放由 resumeAfterPanelIfReady 在面板渲染完成后下发。
+        boolean prepared = prepareMediaSession(context, str);
         learnCurrentMedia(str);
-        if (!zIsProcessRunning) {
+        if (!wasRunning) {
             WOKE.add(str);
             sActiveWokePkg = str;
         }
-        log(context, "后台唤醒 " + str + " (媒体按键=" + zSendMediaButton + ", 启动服务=" + zStartPlayerService + ", 会话播放=" + zPlayViaSession + ", 原本已运行=" + zIsProcessRunning + ")");
+        log(context, "后台静默唤醒 " + str
+                + " (准备=" + prepared + ", 原本已运行=" + wasRunning + ")");
     }
 
     /* JADX INFO: Access modifiers changed from: private */
@@ -2591,22 +2720,23 @@ public class AutoPlayAllHook implements IHook {
     }
 
     /* JADX INFO: Access modifiers changed from: private */
-    public static void resumeCarWith(ClassLoader classLoader, String str) {
+    public static boolean resumeCarWith(ClassLoader classLoader, String str) {
         Context context = sAppCtx;
         if (context != null && isPlaying(context, str)) {
             log(context, "跳过重复续播，播放器已经进入播放: " + str);
-            return;
+            return true;
         }
         long now = SystemClock.elapsedRealtime();
         if (ResumeReadinessPolicy.isDuplicateResume(
                 sLastResumePkg, sLastResumeAt, str, now, DUPLICATE_RESUME_WINDOW_MS)) {
             log(sAppCtx, "跳过重复续播: " + str);
-            return;
+            return true;
         }
         try {
             Object mediaHelperInstance = GenericAutoPlayHooks.getMediaHelperInstance(classLoader);
             if (mediaHelperInstance == null) {
-                return;
+                log(sAppCtx, "续播入口尚未解析，稍后重试: " + str);
+                return false;
             }
             sResumeInFlight = true;
             try {
@@ -2615,12 +2745,14 @@ public class AutoPlayAllHook implements IHook {
                 sLastResumePkg = str;
                 sLastResumeAt = SystemClock.elapsedRealtime();
                 log(sAppCtx, "已下发续播指令: " + str + " (距开始 " + (panelWaitElapsed(str)) + "ms)");
+                return true;
             } catch (Throwable th) {
                 sResumeInFlight = false;
                 throw th;
             }
         } catch (Throwable th2) {
             logErr(sAppCtx, "下发续播指令失败: " + str, th2);
+            return false;
         }
     }
 
@@ -2664,6 +2796,14 @@ public class AutoPlayAllHook implements IHook {
     }
 
     public static boolean sendMediaButton(Context context, String str) {
+        return sendMediaKey(context, str, KeyEvent.KEYCODE_MEDIA_PLAY);
+    }
+
+    /**
+     * Sends a single media key to a dead player. Pause is used while preparing
+     * a session: it may start the receiver/process but must not start playback.
+     */
+    private static boolean sendMediaKey(Context context, String str, int keyCode) {
         try {
             PackageManager packageManager = context.getPackageManager();
             Intent intent = new Intent("android.intent.action.MEDIA_BUTTON");
@@ -2673,13 +2813,12 @@ public class AutoPlayAllHook implements IHook {
                 for (ResolveInfo resolveInfo : listQueryBroadcastReceivers) {
                     if (resolveInfo.activityInfo != null) {
                         ComponentName componentName = new ComponentName(resolveInfo.activityInfo.packageName, resolveInfo.activityInfo.name);
-                        int[] iArr = {0, 1};
-                        for (int i = 0; i < 2; i++) {
-                            int i2 = iArr[i];
-                            Intent intent2 = new Intent("android.intent.action.MEDIA_BUTTON");
-                            intent2.setComponent(componentName);
-                            intent2.putExtra("android.intent.extra.KEY_EVENT", new KeyEvent(i2, 126));
-                            context.sendBroadcast(intent2);
+                        int[] actions = {KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP};
+                        for (int action : actions) {
+                            Intent keyIntent = new Intent("android.intent.action.MEDIA_BUTTON");
+                            keyIntent.setComponent(componentName);
+                            keyIntent.putExtra("android.intent.extra.KEY_EVENT", new KeyEvent(action, keyCode));
+                            context.sendBroadcast(keyIntent);
                         }
                         return true;
                     }
@@ -2693,16 +2832,19 @@ public class AutoPlayAllHook implements IHook {
         }
     }
 
-    public static void bindBrowseService(Context context, String str) {
+    public static boolean bindBrowseService(Context context, String str) {
         if (context == null || str == null || str.length() == 0) {
-            return;
+            return false;
         }
+        boolean connected = false;
         try {
             String str2 = KNOWN_SERVICES.get(str);
             if (str2 != null) {
                 ComponentName knownComponent = new ComponentName(str, str2);
                 if (!isServiceAccessProtected(context, knownComponent)) {
-                    connect(context, knownComponent);
+                    connected = connect(context, knownComponent);
+                } else {
+                    log(context, "已知媒体服务受权限保护，尝试动态发现: " + str2);
                 }
             }
             PackageManager packageManager = context.getPackageManager();
@@ -2721,14 +2863,17 @@ public class AutoPlayAllHook implements IHook {
                             continue;
                         }
                         log(context, "  候选: " + serviceInfo.name + " exported=" + serviceInfo.exported);
-                        connect(context, component);
-                        return;
+                        connected = connect(context, component) || connected;
+                        if (connected) {
+                            return true;
+                        }
                     }
                 }
             }
         } catch (Throwable th) {
             logErr(context, "后台绑定媒体服务失败: " + str, th);
         }
+        return connected;
     }
 
     private static boolean isServiceAccessProtected(
@@ -2745,7 +2890,7 @@ public class AutoPlayAllHook implements IHook {
         }
     }
 
-    private static void connect(Context context, final ComponentName componentName) {
+    private static boolean connect(Context context, final ComponentName componentName) {
         final String strFlattenToShortString = componentName.flattenToShortString();
         Map<String, MediaBrowser> map = BROWSERS;
         synchronized (map) {
@@ -2754,7 +2899,7 @@ public class AutoPlayAllHook implements IHook {
             Long l = map2.get(strFlattenToShortString);
             if (l != null && jElapsedRealtime - l.longValue() < 5000) {
                 log(context, "略过重复绑定: " + strFlattenToShortString);
-                return;
+                return true;
             }
             map2.put(strFlattenToShortString, Long.valueOf(jElapsedRealtime));
             MediaBrowser mediaBrowserRemove = map.remove(strFlattenToShortString);
@@ -2787,8 +2932,10 @@ public class AutoPlayAllHook implements IHook {
                 mediaBrowser.connect();
                 BROWSERS.put(strFlattenToShortString, mediaBrowser);
                 log(context, "后台绑定媒体服务: " + strFlattenToShortString);
+                return true;
             } catch (Throwable th2) {
                 logErr(context, "绑定异常: " + strFlattenToShortString, th2);
+                return false;
             }
         }
     }
@@ -2944,11 +3091,8 @@ public class AutoPlayAllHook implements IHook {
                                 if (ResumeReadinessPolicy.shouldWake(
                                         processRunning, hasSession, finalAttempt)
                                         && (allowWake || hasSession)) {
-                                    log(context, "等待 " + str + " 启动，补一次唤醒");
-                                    sendMediaButton(context, str);
-                                    startPlayerService(context, str);
-                                    playViaSession(context, str);
-                                    bindBrowseService(context, str);
+                                    log(context, "等待 " + str + " 启动，静默绑定媒体服务");
+                                    prepareMediaSession(context, str);
                                 }
                                 if (finalAttempt) {
                                     CANNOT_WAKE.add(str);
@@ -2959,7 +3103,9 @@ public class AutoPlayAllHook implements IHook {
                             }
                             CANNOT_WAKE.remove(str);
                             if (!hasSession) {
-                                log(context, "等待媒体会话出现 " + str);
+                                prepareMediaSession(context, str);
+                                log(context, "等待媒体会话出现 " + str
+                                        + "（已静默绑定，不提前播放）");
                                 return;
                             }
                             boolean autoPlayEnabled = readPrefAutoPlay();
@@ -2974,10 +3120,19 @@ public class AutoPlayAllHook implements IHook {
                             }
                             if (resumeAfterPanelIfReady(classLoader, str)) {
                                 sResumedPkg = str;
-                                log(context, "会话已就绪，面板已同步，下发官方续播 " + str);
+                                log(context, "会话已就绪且面板已渲染，下发官方续播 " + str);
                             } else {
-                                log(context, "会话已就绪，等待面板元数据 " + str);
+                                log(context, "会话已就绪，继续等待面板渲染 " + str);
                             }
+                            return;
+                        }
+                        if (str.equals(sPanelFirstPkg)
+                                && !panelRecentlyRendered(str)
+                                && !str.equals(sEarlyPausedPkg)) {
+                            sEarlyPausedPkg = str;
+                            log(context, "面板未渲染但 " + str
+                                    + " 已提前播放，先暂停等待面板");
+                            sendMediaKey(context, str, KeyEvent.KEYCODE_MEDIA_PAUSE);
                             return;
                         }
                         cancelRetryTasks();

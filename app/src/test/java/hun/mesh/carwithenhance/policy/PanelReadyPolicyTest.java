@@ -26,4 +26,17 @@ public class PanelReadyPolicyTest {
         assertTrue(PanelReadyPolicy.panelWaitExceeded(1000L, 7000L, 6000L));
         assertFalse(PanelReadyPolicy.panelWaitExceeded(1000L, 1000L, 6000L));
     }
+
+    @Test
+    public void playbackWaitsForPanelRenderUntilRenderTimeout() {
+        long start = 1000L;
+        assertFalse(PanelReadyPolicy.canStartPlayback(
+                true, false, start, 3000L, 4000L, 6000L));
+        assertFalse(PanelReadyPolicy.canStartPlayback(
+                false, false, start, 3000L, 4000L, 6000L));
+        assertTrue(PanelReadyPolicy.canStartPlayback(
+                true, true, start, 3000L, 4000L, 6000L));
+        assertTrue(PanelReadyPolicy.canStartPlayback(
+                true, false, start, 7000L, 4000L, 6000L));
+    }
 }
