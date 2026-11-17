@@ -5,8 +5,8 @@
 ## 版本
 
 ```text
-versionCode: 56
-versionName: 2.5.3-resume-panel
+versionCode: 57
+versionName: 2.5.4-panel-reconcile
 包名:        hun.mesh.carwithenhance
 minSdk:      29
 targetSdk:   36
@@ -78,5 +78,5 @@ export ANDROID_HOME=/path/to/android-sdk
 
 最新版本：
 
-- APK：[CarWithEnhance-2.5.3-resume-panel.apk](releases/CarWithEnhance-2.5.3-resume-panel.apk)
-- 校验文件：[SHA256SUMS-2.5.3.txt](releases/SHA256SUMS-2.5.3.txt)
+- APK：[CarWithEnhance-2.5.4-panel-reconcile.apk](releases/CarWithEnhance-2.5.4-panel-reconcile.apk)
+- 校验文件：[SHA256SUMS-2.5.4.txt](releases/SHA256SUMS-2.5.4.txt)

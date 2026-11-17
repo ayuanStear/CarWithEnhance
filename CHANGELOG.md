@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.5.4 - 2026-11-17
+
+- Reconcile the CarWith media panel after a timeout-based resume even if the
+  panel was not rendered when playback started.
+- Retry panel synchronization at 0.25, 0.6, 1.2, 2.5, and 5 seconds without
+  issuing another resume request.
+- Stop panel reconciliation when a render callback belonging to the current
+  playback cycle is observed, avoiding stale panel timestamps from the
+  previous track.
+- Cancel reconciliation tasks on disconnect or connection-generation changes.
+- Add a panel render-cycle policy test and verify the fixed panel on the car
+  virtual display.
+
 ## 2.5.3 - 2026-11-17
 
 - Detect rendered media panels through the current `MusicViewA` signature

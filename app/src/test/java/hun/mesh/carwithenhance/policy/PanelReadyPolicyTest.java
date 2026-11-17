@@ -67,4 +67,13 @@ public class PanelReadyPolicyTest {
         assertTrue(PanelReadyPolicy.shouldAcceptPanelRenderEvent(5_000L, 6_000L, 1_000L));
         assertFalse(PanelReadyPolicy.shouldAcceptPanelRenderEvent(5_000L, 4_999L, 1_000L));
     }
+
+    @Test
+    public void panelRenderMustBelongToTheCurrentReconcileCycle() {
+        long cycleStartedAt = 10_000L;
+        assertFalse(PanelReadyPolicy.wasRenderedAfter(0L, cycleStartedAt));
+        assertFalse(PanelReadyPolicy.wasRenderedAfter(9_999L, cycleStartedAt));
+        assertTrue(PanelReadyPolicy.wasRenderedAfter(10_000L, cycleStartedAt));
+        assertTrue(PanelReadyPolicy.wasRenderedAfter(10_001L, cycleStartedAt));
+    }
 }

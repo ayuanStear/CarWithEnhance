@@ -145,6 +145,7 @@ public class AutoPlayAllHook implements IHook {
     private static final Map<String, Long> PANEL_RENDERED_AT = new ConcurrentHashMap();
     private static final Map<String, Long> PANEL_REFRESH_AT = new ConcurrentHashMap();
     private static final Map<String, MediaSnapshot> PANEL_SNAPSHOT = new ConcurrentHashMap();
+    private static final Map<String, Long> PANEL_RECONCILE_GENERATION = new ConcurrentHashMap();
     private static final Map<String, Long> SESSION_WAIT_STARTED = new ConcurrentHashMap();
     private static final Map<String, MediaController.Callback> SESSION_CALLBACKS = new ConcurrentHashMap();
     private static final Map<String, MediaController> SESSION_CONTROLLERS = new ConcurrentHashMap();
@@ -1273,6 +1274,9 @@ public class AutoPlayAllHook implements IHook {
         boolean sent = resumeCarWith(classLoader, pkg);
         if (sent) {
             PANEL_WAIT_STARTED.remove(pkg);
+            if (!rendered) {
+                schedulePostResumePanelReconcile(pkg);
+            }
             if (pkg.equals(sWaitingPkg)) {
                 sWaitingPkg = null;
             }
@@ -1562,6 +1566,7 @@ public class AutoPlayAllHook implements IHook {
         sConfirmedPlayingPkg = null;
         PANEL_WAIT_STARTED.clear();
         PANEL_RENDERED_AT.clear();
+        PANEL_RECONCILE_GENERATION.clear();
         sLastPkg = null;
         sLastWake = 0L;
         sLastResumePkg = null;
@@ -1582,7 +1587,6 @@ public class AutoPlayAllHook implements IHook {
                 }
             }
         }
-        scheduleMediaPanelReconcile(sConnectGen);
         logAudioState(sAppCtx, "车机连接时");
         ClassLoader classLoader = sCl;
         Context context = sAppCtx;
@@ -1592,8 +1596,49 @@ public class AutoPlayAllHook implements IHook {
         preWakeLastUsedApp();
     }
 
-    private static void scheduleMediaPanelReconcile(final long generation) {
-        // 面板同步已移除：不再调度连接后的面板校准。
+    private static void schedulePostResumePanelReconcile(String pkg) {
+        if (pkg == null || pkg.isEmpty() || sAppCtx == null) {
+            return;
+        }
+        ensureHandler();
+        final long generation = sConnectGen;
+        Long previous = PANEL_RECONCILE_GENERATION.put(pkg, Long.valueOf(generation));
+        if (previous != null && previous.longValue() == generation) {
+            return;
+        }
+        schedulePanelReconcileStep(pkg, generation, SystemClock.elapsedRealtime(), 0);
+    }
+
+    private static void schedulePanelReconcileStep(
+            final String pkg, final long generation, final long cycleStartedAt, final int index) {
+        if (sHandler == null || index >= PANEL_RECONCILE_DELAYS.length) {
+            PANEL_RECONCILE_GENERATION.remove(pkg, Long.valueOf(generation));
+            return;
+        }
+        sHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                Long activeGeneration = PANEL_RECONCILE_GENERATION.get(pkg);
+                if (sAppCtx == null || generation != sConnectGen || !sCarConnected
+                        || activeGeneration == null
+                        || activeGeneration.longValue() != generation) {
+                    PANEL_RECONCILE_GENERATION.remove(pkg, Long.valueOf(generation));
+                    return;
+                }
+                Long renderedAt = PANEL_RENDERED_AT.get(pkg);
+                if (renderedAt != null
+                        && PanelReadyPolicy.wasRenderedAfter(
+                        renderedAt.longValue(), cycleStartedAt)) {
+                    PANEL_RECONCILE_GENERATION.remove(pkg, Long.valueOf(generation));
+                    return;
+                }
+                MediaController controller = findController(sAppCtx, pkg);
+                if (controller != null) {
+                    refreshCarWithMediaState(sAppCtx, pkg, controller, true);
+                }
+                schedulePanelReconcileStep(pkg, generation, cycleStartedAt, index + 1);
+            }
+        }, PANEL_RECONCILE_DELAYS[index]);
     }
 
     private static void scheduleExperienceApply(final ClassLoader classLoader, long j) {
@@ -2053,6 +2098,7 @@ public class AutoPlayAllHook implements IHook {
         PANEL_WAIT_STARTED.clear();
         PANEL_RENDERED_AT.clear();
         PANEL_SNAPSHOT.clear();
+        PANEL_RECONCILE_GENERATION.clear();
         SESSION_WAIT_STARTED.clear();
         sOfficialResumeRequestPkg = null;
         sOfficialResumeRequestAt = 0L;

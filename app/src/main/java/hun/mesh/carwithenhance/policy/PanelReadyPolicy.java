@@ -75,6 +75,12 @@ public final class PanelReadyPolicy {
         return nowElapsedRealtime - previousEventElapsedRealtime >= minIntervalMillis;
     }
 
+    public static boolean wasRenderedAfter(long renderedAt, long cycleStartedAt) {
+        return renderedAt > 0L
+                && cycleStartedAt > 0L
+                && renderedAt >= cycleStartedAt;
+    }
+
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
     }

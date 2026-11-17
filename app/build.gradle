@@ -10,8 +10,8 @@ android {
         applicationId 'hun.mesh.carwithenhance'
         minSdk 29
         targetSdk 36
-        versionCode 56
-        versionName "2.5.3-resume-panel"
+        versionCode 57
+        versionName "2.5.4-panel-reconcile"
         buildConfigField "long", "BUILD_TIME", "${System.currentTimeMillis()}L"
         ndk {
             abiFilters 'arm64-v8a'
