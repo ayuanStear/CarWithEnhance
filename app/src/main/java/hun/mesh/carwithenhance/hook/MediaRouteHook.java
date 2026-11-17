@@ -112,7 +112,19 @@ public final class MediaRouteHook implements IHook {
             XC_MethodHook.MethodHookParam param, RouteRequest request) {
         Context context = AutoPlayAllHook.getAppContext();
         String pkg = request.packageName;
-        if (!shouldHandle(context, pkg) || isCustomPageActive(pkg)) {
+        if (!shouldHandle(context, pkg)) {
+            return;
+        }
+        boolean pageActive = isCustomPageActive(pkg);
+        AutoPlayAllHook.log(context, "媒体路由请求: " + pkg
+                + " (source=" + request.source
+                + ", current=" + AutoPlayAllHook.isCurrentMediaTarget(pkg)
+                + ", ready=" + AutoPlayAllHook.isMediaSessionReady(pkg)
+                + ", active=" + pageActive + ")");
+        if (pageActive) {
+            // Consume the click instead of letting the host fall through to
+            // its native Activity branch while the custom page is already up.
+            param.setResult(null);
             return;
         }
         long now = SystemClock.elapsedRealtime();
@@ -211,14 +223,27 @@ public final class MediaRouteHook implements IHook {
                             Context context = param.args[0] instanceof Context
                                     ? (Context) param.args[0] : AutoPlayAllHook.getAppContext();
                             String pkg = (String) param.args[3];
-                            if (!shouldRedirectNative(context, pkg)) {
+                            if (!shouldHandle(context, pkg)) {
                                 return;
                             }
+                            // Always stop the native Activity path for a
+                            // custom-capable media app. Even when the player
+                            // session is not ready yet, prepare it and open the
+                            // custom page instead of letting CarWith show the
+                            // native Activity.
                             param.setResult(null);
-                            NATIVE_REDIRECTED.put(pkg, Long.valueOf(SystemClock.elapsedRealtime()));
+                            long now = SystemClock.elapsedRealtime();
+                            Long last = NATIVE_REDIRECTED.get(pkg);
+                            if (last != null
+                                    && now - last.longValue() < NATIVE_REDIRECT_GUARD_MS) {
+                                AutoPlayAllHook.log(context,
+                                        "原生页面启动已忽略（短时间内重复）: " + pkg);
+                                return;
+                            }
+                            NATIVE_REDIRECTED.put(pkg, Long.valueOf(now));
                             AutoPlayAllHook.log(context,
                                     "拦截原生页面启动，改走定制媒体页: " + pkg);
-                            openCustomMediaPage(context, pkg, "source_from_media_guard");
+                            redirectToCustom(context, pkg, now);
                         } catch (Throwable th) {
                             XLog.e("[媒体路由] 原生页面拦截失败", th);
                         }
@@ -234,26 +259,32 @@ public final class MediaRouteHook implements IHook {
         }
     }
 
-    private static boolean shouldRedirectNative(Context context, String pkg) {
-        if (!shouldHandle(context, pkg)) {
-            return false;
+    private static void redirectToCustom(
+            final Context context, final String pkg, final long startedAt) {
+        if (AutoPlayAllHook.isMediaSessionReady(pkg)) {
+            openCustomMediaPage(context, pkg, "source_from_media_guard");
+            return;
         }
-        if (!AutoPlayAllHook.isMediaSessionReady(pkg)) {
-            return false;
-        }
-        Long last = NATIVE_REDIRECTED.get(pkg);
-        return last == null
-                || SystemClock.elapsedRealtime() - last.longValue() >= NATIVE_REDIRECT_GUARD_MS;
-    }
-
-    private static boolean shouldHandle(Context context, String pkg) {
-        return context != null
-                && pkg != null
-                && pkg.indexOf('.') > 0
-                && AutoPlayAllHook.isCarConnected()
-                && CUSTOM_CAPABLE.contains(pkg)
-                && AutoPlayAllHook.isMediaAppName(pkg)
-                && !prefersNative(context, pkg);
+        AutoPlayAllHook.prepareMediaSession(context, pkg);
+        AutoPlayAllHook.log(context, "原生页面防护等待媒体会话: " + pkg);
+        handler().postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (AutoPlayAllHook.isMediaSessionReady(pkg)) {
+                    AutoPlayAllHook.log(context,
+                            "原生页面防护：媒体会话已就绪，打开定制页: " + pkg);
+                    openCustomMediaPage(context, pkg, "source_from_media_guard");
+                    return;
+                }
+                if (SystemClock.elapsedRealtime() - startedAt < PREPARE_TIMEOUT_MS) {
+                    handler().postDelayed(this, PREPARE_POLL_MS);
+                    return;
+                }
+                AutoPlayAllHook.log(context,
+                        "原生页面防护：会话准备超时，仍保持定制页: " + pkg);
+                openCustomMediaPage(context, pkg, "source_from_media_guard");
+            }
+        }, PREPARE_POLL_MS);
     }
 
     private static boolean isCustomPageActive(String pkg) {
@@ -267,6 +298,16 @@ public final class MediaRouteHook implements IHook {
         } catch (Throwable ignored) {
             return false;
         }
+    }
+
+    private static boolean shouldHandle(Context context, String pkg) {
+        return context != null
+                && pkg != null
+                && pkg.indexOf('.') > 0
+                && AutoPlayAllHook.isCarConnected()
+                && CUSTOM_CAPABLE.contains(pkg)
+                && AutoPlayAllHook.isMediaAppName(pkg)
+                && !prefersNative(context, pkg);
     }
 
     private static boolean openCustomMediaPage(Context context, String pkg, String source) {

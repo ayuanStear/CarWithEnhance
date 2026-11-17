@@ -89,7 +89,7 @@ public class AutoPlayAllHook implements IHook {
     private static final long PAUSE_POLL_MS = 100;
     private static final long DUPLICATE_RESUME_WINDOW_MS = 600L;
     private static final long PANEL_METADATA_MAX_WAIT_MS = 4500L;
-    private static final long PANEL_RENDER_MAX_WAIT_MS = 7000L;
+    private static final long PANEL_RENDER_MAX_WAIT_MS = 15000L;
     private static final long PANEL_RENDER_FRESH_MS = 3000L;
     private static final long PANEL_REFRESH_MIN_INTERVAL_MS = 600L;
     private static final Map<String, String> PLAYBACK_SERVICES;
@@ -1198,6 +1198,13 @@ public class AutoPlayAllHook implements IHook {
         }
         boolean rendered = panelRecentlyRendered(pkg);
         long afterPush = SystemClock.elapsedRealtime();
+        if (!rendered && pkg.equals(sPanelFirstPkg)) {
+            // Cold-start resume must never race ahead of the panel. Keep
+            // waiting; markPanelRendered() will kick the resume as soon as the
+            // card/page really renders.
+            log(sAppCtx, "冷启动面板尚未渲染，保持等待: " + pkg);
+            return false;
+        }
         if (!PanelReadyPolicy.canStartPlayback(
                 true, rendered, start, afterPush,
                 PANEL_METADATA_MAX_WAIT_MS, PANEL_RENDER_MAX_WAIT_MS)) {

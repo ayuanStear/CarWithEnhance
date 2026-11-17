@@ -20,6 +20,8 @@ import java.util.WeakHashMap;
 public final class CarWithPanelReadyHook implements IHook {
     private static final String BASE_MUSIC_VIEW =
             "com.carwith.launcher.card.v2.widget.BaseMusicView";
+    private static final String CARD_MUSIC_VIEW =
+            "com.carwith.launcher.card.CardMusicView";
     private static final String MEDIA_VIEW_PAGER =
             "com.carwith.launcher.media.MediaViewPager";
     private static final String MEDIA_PLAY_FRAGMENT =
@@ -49,41 +51,59 @@ public final class CarWithPanelReadyHook implements IHook {
     }
 
     private static boolean hookMusicCard(ClassLoader classLoader) {
-        Class<?> base = XposedHelpers.findClassIfExists(BASE_MUSIC_VIEW, classLoader);
-        if (base == null) {
+        boolean hooked = false;
+        hooked |= hookCardOwner(classLoader, BASE_MUSIC_VIEW, "v", true);
+        hooked |= hookCardOwner(classLoader, CARD_MUSIC_VIEW, "X", false);
+        return hooked;
+    }
+
+    private static boolean hookCardOwner(
+            ClassLoader classLoader, String className, String bindMethodName,
+            boolean bindReturnsBoolean) {
+        Class<?> owner = XposedHelpers.findClassIfExists(className, classLoader);
+        if (owner == null) {
+            XLog.e("[面板就绪] 未找到媒体卡片类: " + className);
             return false;
         }
         boolean hooked = false;
         try {
-            for (Method method : base.getDeclaredMethods()) {
-                if ("v".equals(method.getName())
-                        && method.getReturnType() == Boolean.TYPE
-                        && method.getParameterTypes().length == 1
-                        && method.getParameterTypes()[0] == String.class) {
-                    XposedBridge.hookMethod(method, new XC_MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
-                            if (Boolean.TRUE.equals(param.getResult())
-                                    && param.args[0] instanceof String) {
-                                VIEW_PACKAGE.put(param.thisObject, (String) param.args[0]);
-                            }
-                        }
-                    });
-                    hooked = true;
+            for (Method method : owner.getDeclaredMethods()) {
+                if (!bindMethodName.equals(method.getName())
+                        || method.getParameterTypes().length != 1
+                        || method.getParameterTypes()[0] != String.class) {
+                    continue;
                 }
+                if (bindReturnsBoolean && method.getReturnType() != Boolean.TYPE) {
+                    continue;
+                }
+                if (!bindReturnsBoolean && method.getReturnType() != Void.TYPE) {
+                    continue;
+                }
+                XposedBridge.hookMethod(method, new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        if ((!bindReturnsBoolean || Boolean.TRUE.equals(param.getResult()))
+                                && param.args[0] instanceof String) {
+                            VIEW_PACKAGE.put(param.thisObject, (String) param.args[0]);
+                        }
+                    }
+                });
+                hooked = true;
             }
         } catch (Throwable th) {
-            XLog.e("[面板就绪] Hook 媒体卡片绑定失败", th);
+            XLog.e("[面板就绪] Hook 媒体卡片绑定失败: " + className, th);
         }
 
         Set<Class<?>> callbacks = new LinkedHashSet<>();
         try {
-            Class<?> direct = XposedHelpers.findClassIfExists(
-                    BASE_MUSIC_VIEW + "$c", classLoader);
-            if (direct != null) {
-                callbacks.add(direct);
+            for (String suffix : new String[]{"$c", "$b", "$a", "$d"}) {
+                Class<?> direct = XposedHelpers.findClassIfExists(
+                        className + suffix, classLoader);
+                if (direct != null) {
+                    callbacks.add(direct);
+                }
             }
-            for (Class<?> inner : base.getDeclaredClasses()) {
+            for (Class<?> inner : owner.getDeclaredClasses()) {
                 if (hasMetadataCallback(inner)) {
                     callbacks.add(inner);
                 }
@@ -92,36 +112,67 @@ public final class CarWithPanelReadyHook implements IHook {
         }
         for (Class<?> callback : callbacks) {
             for (Method method : callback.getDeclaredMethods()) {
-                if (!"i".equals(method.getName())
-                        || method.getReturnType() != Void.TYPE
-                        || method.getParameterTypes().length != 1
-                        || !isMetadataType(method.getParameterTypes()[0])) {
+                if (method.getReturnType() != Void.TYPE) {
                     continue;
                 }
+                Class<?>[] params = method.getParameterTypes();
+                int metadataIndex = -1;
+                int packageIndex = -1;
+                if ("i".equals(method.getName())
+                        && params.length == 1
+                        && isMetadataType(params[0])) {
+                    metadataIndex = 0;
+                } else if ("j".equals(method.getName())
+                        && params.length == 2
+                        && params[0] == String.class
+                        && isMetadataType(params[1])) {
+                    metadataIndex = 1;
+                    packageIndex = 0;
+                }
+                if (metadataIndex < 0) {
+                    continue;
+                }
+                final int metaIndex = metadataIndex;
+                final int pkgIndex = packageIndex;
                 try {
-                    final Class<?> baseClass = base;
+                    final Class<?> ownerClass = owner;
                     XposedBridge.hookMethod(method, new XC_MethodHook() {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
-                            handleCardRender(param, baseClass, param.args[0]);
+                            if (param.args.length <= metaIndex) {
+                                return;
+                            }
+                            String pkgHint = pkgIndex >= 0
+                                    && param.args.length > pkgIndex
+                                    && param.args[pkgIndex] instanceof String
+                                    ? (String) param.args[pkgIndex] : null;
+                            handleCardRender(param, ownerClass,
+                                    param.args[metaIndex], pkgHint);
                         }
                     });
                     hooked = true;
                 } catch (Throwable th) {
-                    XLog.e("[面板就绪] Hook 媒体卡片回调失败", th);
+                    XLog.e("[面板就绪] Hook 媒体卡片回调失败: " + className, th);
                 }
             }
+        }
+        if (hooked) {
+            log("媒体卡片变体已注册: " + className);
         }
         return hooked;
     }
 
     private static void handleCardRender(
-            XC_MethodHook.MethodHookParam param, Class<?> baseClass, Object metadata) {
+            XC_MethodHook.MethodHookParam param, Class<?> baseClass,
+            Object metadata, String pkgHint) {
         if (metadata == null || !hasTitleOrArtist(metadata)) {
             return;
         }
-        Object view = findOuter(param.thisObject, baseClass);
-        String pkg = view == null ? null : VIEW_PACKAGE.get(view);
+        String pkg = pkgHint;
+        if (pkg == null) {
+            Object view = findOuter(param.thisObject, baseClass);
+            pkg = view == null ? null : VIEW_PACKAGE.get(view);
+        }
         if (pkg == null) {
             pkg = AutoPlayAllHook.getCurrentMediaPackage();
         }
@@ -154,18 +205,33 @@ public final class CarWithPanelReadyHook implements IHook {
             }
             for (Class<?> type : classes) {
                 for (Method method : type.getDeclaredMethods()) {
-                    if (!"i".equals(method.getName())
-                            || method.getReturnType() != Void.TYPE
-                            || method.getParameterTypes().length != 1
-                            || !isMetadataType(method.getParameterTypes()[0])) {
+                    if (method.getReturnType() != Void.TYPE) {
                         continue;
                     }
+                    Class<?>[] params = method.getParameterTypes();
+                    int metadataIndex = -1;
+                    if ("i".equals(method.getName())
+                            && params.length == 1
+                            && isMetadataType(params[0])) {
+                        metadataIndex = 0;
+                    } else if ("j".equals(method.getName())
+                            && params.length == 2
+                            && params[0] == String.class
+                            && isMetadataType(params[1])) {
+                        metadataIndex = 1;
+                    }
+                    if (metadataIndex < 0) {
+                        continue;
+                    }
+                    final int index = metadataIndex;
                     try {
                         final Class<?> ownerClass = owner;
                         XposedBridge.hookMethod(method, new XC_MethodHook() {
                             @Override
                             protected void afterHookedMethod(MethodHookParam param) {
-                                handlePageRender(param, ownerClass, param.args[0]);
+                                if (param.args.length > index) {
+                                    handlePageRender(param, ownerClass, param.args[index]);
+                                }
                             }
                         });
                         hooked = true;

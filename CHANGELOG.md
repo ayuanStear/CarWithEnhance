@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.5.2 - 2026-11-17
+
+- Hook the legacy `CardMusicView` and both `i`/`j` metadata callbacks, so a
+  rendered home music card is detected on every CarWith card variant.
+- Cold-start resume now keeps waiting instead of falling back to play after a
+  short render timeout; a late panel render still triggers the resume.
+- Native media-app launch guard now suppresses the native Activity even when
+  the target MediaSession is not ready yet, prepares it, then opens the custom
+  media page.
+- Consume repeat media-app clicks while the custom media page is already active
+  instead of letting the host fall through to its native branch.
+- Added route/native-guard diagnostics for the remaining NetEase cases.
+
 ## 2.5.1 - 2026-11-16
 
 - Resume playback only after CarWith has actually rendered the music card or

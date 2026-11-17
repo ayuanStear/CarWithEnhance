@@ -10,8 +10,8 @@ android {
         applicationId 'hun.mesh.carwithenhance'
         minSdk 29
         targetSdk 36
-        versionCode 54
-        versionName "2.5.1-panel-route"
+        versionCode 55
+        versionName "2.5.2-panel-render"
         buildConfigField "long", "BUILD_TIME", "${System.currentTimeMillis()}L"
         ndk {
             abiFilters 'arm64-v8a'

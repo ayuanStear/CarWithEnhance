@@ -5,8 +5,8 @@
 ## 版本
 
 ```text
-versionCode: 54
-versionName: 2.5.1-panel-route
+versionCode: 55
+versionName: 2.5.2-panel-render
 包名:        hun.mesh.carwithenhance
 minSdk:      29
 targetSdk:   36
