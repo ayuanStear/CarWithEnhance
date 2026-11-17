@@ -5,8 +5,8 @@ An Xposed / LSPosed module for Xiaomi CarWith. It improves media panel reliabili
 ## Version
 
 ```text
-versionCode: 53
-versionName: 2.5.0
+versionCode: 56
+versionName: 2.5.3-resume-panel
 package:    hun.mesh.carwithenhance
 minSdk:     29
 targetSdk:  36
@@ -75,3 +75,8 @@ The release APK is written to `app/build/outputs/apk/release/app-release.apk`.
 ## Releases
 
 See `releases/` for the signed APKs and `SHA256SUMS.txt`.
+
+Latest release:
+
+- APK: [CarWithEnhance-2.5.3-resume-panel.apk](releases/CarWithEnhance-2.5.3-resume-panel.apk)
+- Checksum: [SHA256SUMS-2.5.3.txt](releases/SHA256SUMS-2.5.3.txt)

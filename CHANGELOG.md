@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.5.3 - 2026-11-17
+
+- Detect rendered media panels through the current `MusicViewA` signature
+  callbacks instead of relying only on legacy `BaseMusicView`/`CardMusicView`
+  bind names.
+- Require an attached, visible and sized media view before treating a panel as
+  rendered, and deduplicate repeated render callbacks.
+- Preserve the official CarWith resume request before applying the module's
+  fallback wake path, reducing duplicate NetEase process starts.
+- Add a 3-second cold-start grace window and post-grace fallback attempts at
+  3.4 and 4.2 seconds so slower players such as Luna Music can still resume.
+- Avoid automatic resume when the user manually opens a media app, while
+  keeping custom media routing ahead of native pages.
+- Remove obsolete resume state, high-frequency diagnostic logs, and dead
+  panel-pause branches.
+
 ## 2.5.2 - 2026-11-17
 
 - Hook the legacy `CardMusicView` and both `i`/`j` metadata callbacks, so a
