@@ -1,25 +1,38 @@
 package hun.mesh.carwithenhance.hook;
 
 import android.os.Bundle;
+import android.os.SystemClock;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 import hun.mesh.carwithenhance.media.CarWithMediaCapabilities;
+import hun.mesh.carwithenhance.policy.LyricFallbackPolicy;
 import hun.mesh.carwithenhance.utils.XLog;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 歌词占位：原生 lyricInfo 优先；无歌词时把歌词结果写死为“暂无歌词”。
- * 不做任何在线取词。
+ * Preserves native lyrics and only supplies a placeholder after a track has
+ * remained without lyrics for a short lookup grace period.
  */
 public class LyricSourceHook implements IHook {
-    private static final String LYRIC_INFO_KEY = "lyricInfo";
-    private static final String PLACEHOLDER_LRC = "[00:00.00]暂无歌词";
+    private static final String[] LYRIC_KEYS = {
+            "lyricInfo",
+            "rawLyric",
+            "android.media.metadata.LYRICS",
+            "lyric",
+            "lrc"
+    };
+    private static final String MEDIA_ID_KEY = "android.media.metadata.MEDIA_ID";
+    private static final long LYRIC_LOOKUP_GRACE_MS = 1500L;
+    private static final Map<String, Long> EMPTY_SINCE = new ConcurrentHashMap<>();
+    private static volatile String sLastMediaId;
 
     @Override
     public void onHook(ClassLoader classLoader) {
-        Method lyricSource = CarWithMediaCapabilities.INSTANCE.getLyricSourceMethod();
+        java.lang.reflect.Method lyricSource =
+                CarWithMediaCapabilities.INSTANCE.getLyricSourceMethod();
         if (lyricSource == null) {
             XLog.e(">> [歌词] 未解析到歌词入口，保留官方原生歌词行为");
             return;
@@ -31,7 +44,7 @@ public class LyricSourceHook implements IHook {
         try {
             XposedBridge.hookMethod(lyricSource, new XC_MethodHook() {
                 @Override
-                protected void beforeHookedMethod(MethodHookParam param) {
+                protected void afterHookedMethod(MethodHookParam param) {
                     try {
                         Object metadata = param.args != null && param.args.length > 0
                                 ? param.args[0]
@@ -43,12 +56,42 @@ public class LyricSourceHook implements IHook {
                         if (bundle == null) {
                             return;
                         }
-                        String lyricInfo = bundle.getString(LYRIC_INFO_KEY);
-                        if (lyricInfo != null && !lyricInfo.trim().isEmpty()) {
+                        String metadataLyric = readMetadataLyric(bundle);
+                        Object nativeResult = param.getResult();
+                        String nativeLyric = nativeResult instanceof String
+                                ? (String) nativeResult
+                                : null;
+                        if (LyricFallbackPolicy.isMeaningfulLyric(nativeLyric)
+                                || LyricFallbackPolicy.isMeaningfulLyric(metadataLyric)) {
+                            removePlaceholderState(bundle);
                             return;
                         }
-                        param.setResult(PLACEHOLDER_LRC);
-                        XLog.i(">> [歌词] 无原生歌词，写入占位“暂无歌词”");
+
+                        String mediaId = mediaIdentity(bundle);
+                        long now = SystemClock.elapsedRealtime();
+                        if (LyricFallbackPolicy.shouldResetNoLyricTimer(
+                                sLastMediaId, mediaId)) {
+                            sLastMediaId = mediaId;
+                            EMPTY_SINCE.put(mediaId, Long.valueOf(now));
+                        }
+                        Long emptySince = EMPTY_SINCE.get(mediaId);
+                        if (emptySince == null) {
+                            EMPTY_SINCE.put(mediaId, Long.valueOf(now));
+                            emptySince = Long.valueOf(now);
+                        }
+                        long elapsed = now - emptySince.longValue();
+                        String chosen = LyricFallbackPolicy.chooseResult(
+                                nativeLyric,
+                                metadataLyric,
+                                elapsed,
+                                LYRIC_LOOKUP_GRACE_MS);
+                        if (chosen.isEmpty() && nativeLyric != null) {
+                            chosen = "";
+                        }
+                        if (chosen.equals(nativeLyric)) {
+                            return;
+                        }
+                        param.setResult(chosen);
                     } catch (Throwable th) {
                         XLog.e(">> [歌词] 歌词占位处理失败", th);
                     }
@@ -98,6 +141,36 @@ public class LyricSourceHook implements IHook {
             return value instanceof Bundle ? (Bundle) value : null;
         } catch (Throwable ignored) {
             return null;
+        }
+    }
+
+    private static String readMetadataLyric(Bundle bundle) {
+        for (String key : LYRIC_KEYS) {
+            String value = bundle.getString(key);
+            if (LyricFallbackPolicy.isMeaningfulLyric(value)) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private static String mediaIdentity(Bundle bundle) {
+        String mediaId = bundle.getString(MEDIA_ID_KEY);
+        if (mediaId == null || mediaId.trim().isEmpty()) {
+            mediaId = bundle.getString("android.media.metadata.TITLE", "");
+        }
+        return mediaId == null || mediaId.trim().isEmpty()
+                ? "unknown"
+                : mediaId;
+    }
+
+    private static void removePlaceholderState(Bundle bundle) {
+        String mediaId = bundle.getString(MEDIA_ID_KEY);
+        if (mediaId == null || mediaId.isEmpty()) {
+            mediaId = sLastMediaId;
+        }
+        if (mediaId != null) {
+            EMPTY_SINCE.remove(mediaId);
         }
     }
 }
