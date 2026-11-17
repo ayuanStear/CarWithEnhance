@@ -39,4 +39,32 @@ public class PanelReadyPolicyTest {
         assertTrue(PanelReadyPolicy.canStartPlayback(
                 true, false, start, 7000L, 4000L, 6000L));
     }
+
+    @Test
+    public void panelViewMustBeAttachedVisibleSizedAndContainMetadata() {
+        assertTrue(PanelReadyPolicy.isViewReadyForRender(true, true, 551, 1032, true));
+        assertFalse(PanelReadyPolicy.isViewReadyForRender(false, true, 551, 1032, true));
+        assertFalse(PanelReadyPolicy.isViewReadyForRender(true, false, 551, 1032, true));
+        assertFalse(PanelReadyPolicy.isViewReadyForRender(true, true, 0, 1032, true));
+        assertFalse(PanelReadyPolicy.isViewReadyForRender(true, true, 551, 0, true));
+        assertFalse(PanelReadyPolicy.isViewReadyForRender(true, true, 551, 1032, false));
+    }
+
+    @Test
+    public void panelPackagePrefersThePackageWaitingForResume() {
+        assertTrue("com.netease.cloudmusic".equals(PanelReadyPolicy.choosePanelPackage(
+                "com.netease.cloudmusic", "com.tencent.qqmusic", "com.miui.player")));
+        assertTrue("com.tencent.qqmusic".equals(PanelReadyPolicy.choosePanelPackage(
+                "", "com.tencent.qqmusic", "com.miui.player")));
+        assertTrue("com.miui.player".equals(PanelReadyPolicy.choosePanelPackage(
+                null, " ", "com.miui.player")));
+    }
+
+    @Test
+    public void repeatedPanelRenderCallbacksAreDeduplicatedInsideWindow() {
+        assertTrue(PanelReadyPolicy.shouldAcceptPanelRenderEvent(0L, 5_000L, 1_000L));
+        assertFalse(PanelReadyPolicy.shouldAcceptPanelRenderEvent(5_000L, 5_999L, 1_000L));
+        assertTrue(PanelReadyPolicy.shouldAcceptPanelRenderEvent(5_000L, 6_000L, 1_000L));
+        assertFalse(PanelReadyPolicy.shouldAcceptPanelRenderEvent(5_000L, 4_999L, 1_000L));
+    }
 }

@@ -42,6 +42,39 @@ public final class PanelReadyPolicy {
                 waitStartElapsedRealtime, nowElapsedRealtime, renderTimeoutMs);
     }
 
+    public static boolean isViewReadyForRender(
+            boolean attached,
+            boolean shown,
+            int width,
+            int height,
+            boolean hasMetadata) {
+        return attached && shown && width > 0 && height > 0 && hasMetadata;
+    }
+
+    public static String choosePanelPackage(
+            String waitingPackage, String currentPackage, String hostPackage) {
+        if (!isBlank(waitingPackage)) {
+            return waitingPackage;
+        }
+        if (!isBlank(currentPackage)) {
+            return currentPackage;
+        }
+        return isBlank(hostPackage) ? null : hostPackage;
+    }
+
+    public static boolean shouldAcceptPanelRenderEvent(
+            long previousEventElapsedRealtime,
+            long nowElapsedRealtime,
+            long minIntervalMillis) {
+        if (previousEventElapsedRealtime <= 0L || minIntervalMillis <= 0L) {
+            return true;
+        }
+        if (nowElapsedRealtime < previousEventElapsedRealtime) {
+            return false;
+        }
+        return nowElapsedRealtime - previousEventElapsedRealtime >= minIntervalMillis;
+    }
+
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
     }

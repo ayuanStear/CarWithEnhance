@@ -98,4 +98,43 @@ public class ResumeReadinessPolicyTest {
                 null, now - 100L,
                 "com.netease.cloudmusic", now, 600L));
     }
+
+    @Test
+    public void officialResumeGetsShortHeadStartBeforeFallbackBinding() {
+        long now = 30_000L;
+        assertTrue(ResumeReadinessPolicy.shouldWaitForOfficialResumeBeforeFallback(
+                true, 0L, now - 1_499L, now, 1_500L));
+        assertFalse(ResumeReadinessPolicy.shouldWaitForOfficialResumeBeforeFallback(
+                true, 0L, now - 1_500L, now, 1_500L));
+        assertFalse(ResumeReadinessPolicy.shouldWaitForOfficialResumeBeforeFallback(
+                false, 0L, now - 100L, now, 1_500L));
+        assertFalse(ResumeReadinessPolicy.shouldWaitForOfficialResumeBeforeFallback(
+                true, now - 100L, now - 200L, now, 1_500L));
+    }
+
+    @Test
+    public void officialResumeColdStartGraceCoversSlowMediaApps() {
+        long startedAt = 40_000L;
+        assertTrue(ResumeReadinessPolicy.isWithinOfficialResumeColdStartGrace(
+                startedAt, startedAt + 2_999L));
+        assertFalse(ResumeReadinessPolicy.isWithinOfficialResumeColdStartGrace(
+                startedAt, startedAt + 3_000L));
+        assertFalse(ResumeReadinessPolicy.isWithinOfficialResumeColdStartGrace(
+                0L, startedAt));
+        assertFalse(ResumeReadinessPolicy.isWithinOfficialResumeColdStartGrace(
+                startedAt, startedAt - 1L));
+    }
+
+    @Test
+    public void fallbackWakeIsRetriedAfterTheColdStartGraceExpires() {
+        assertTrue(ResumeReadinessPolicy.shouldAllowFallbackWakeAttempt(1));
+        assertTrue(ResumeReadinessPolicy.shouldAllowFallbackWakeAttempt(2));
+        assertTrue(ResumeReadinessPolicy.shouldAllowFallbackWakeAttempt(3));
+        assertTrue(ResumeReadinessPolicy.shouldAllowFallbackWakeAttempt(6));
+        assertTrue(ResumeReadinessPolicy.shouldAllowFallbackWakeAttempt(9));
+        assertTrue(ResumeReadinessPolicy.shouldAllowFallbackWakeAttempt(10));
+        assertFalse(ResumeReadinessPolicy.shouldAllowFallbackWakeAttempt(0));
+        assertFalse(ResumeReadinessPolicy.shouldAllowFallbackWakeAttempt(8));
+        assertFalse(ResumeReadinessPolicy.shouldAllowFallbackWakeAttempt(11));
+    }
 }

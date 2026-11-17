@@ -1,8 +1,10 @@
 package hun.mesh.carwithenhance.hook;
 
+import android.view.View;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
+import hun.mesh.carwithenhance.policy.PanelReadyPolicy;
 import hun.mesh.carwithenhance.utils.XLog;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -22,6 +24,14 @@ public final class CarWithPanelReadyHook implements IHook {
             "com.carwith.launcher.card.v2.widget.BaseMusicView";
     private static final String CARD_MUSIC_VIEW =
             "com.carwith.launcher.card.CardMusicView";
+    private static final String[] EXTRA_MUSIC_VIEWS = {
+            "com.carwith.launcher.card.v2.widget.MusicViewA",
+            "com.carwith.launcher.card.v2.widget.MusicView1A",
+            "com.carwith.launcher.card.v2.widget.MusicView2A",
+            "com.carwith.launcher.card.v2.widget.MusicView3A",
+            "com.carwith.launcher.card.ModerateCardMusicView",
+            "com.carwith.launcher.card.DockerMusicView"
+    };
     private static final String MEDIA_VIEW_PAGER =
             "com.carwith.launcher.media.MediaViewPager";
     private static final String MEDIA_PLAY_FRAGMENT =
@@ -54,6 +64,9 @@ public final class CarWithPanelReadyHook implements IHook {
         boolean hooked = false;
         hooked |= hookCardOwner(classLoader, BASE_MUSIC_VIEW, "v", true);
         hooked |= hookCardOwner(classLoader, CARD_MUSIC_VIEW, "X", false);
+        for (String className : EXTRA_MUSIC_VIEWS) {
+            hooked |= hookMetadataMethods(classLoader, className);
+        }
         return hooked;
     }
 
@@ -160,6 +173,68 @@ public final class CarWithPanelReadyHook implements IHook {
             log("媒体卡片变体已注册: " + className);
         }
         return hooked;
+    }
+
+    private static boolean hookMetadataMethods(ClassLoader classLoader, String className) {
+        Class<?> owner = XposedHelpers.findClassIfExists(className, classLoader);
+        if (owner == null) {
+            return false;
+        }
+        boolean hooked = false;
+        for (Method method : owner.getDeclaredMethods()) {
+            if (method.getReturnType() != Void.TYPE) {
+                continue;
+            }
+            Class<?>[] params = method.getParameterTypes();
+            final boolean hasMetadata = params.length >= 1
+                    && params.length <= 2
+                    && isMetadataType(params[0]);
+            boolean progressUpdate = "setCurrentProgress".equals(method.getName())
+                    && params.length == 1
+                    && params[0] == Long.TYPE;
+            if (!hasMetadata && !progressUpdate) {
+                continue;
+            }
+            try {
+                XposedBridge.hookMethod(method, new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        if (hasMetadata
+                                && (param.args.length == 0
+                                || !hasTitleOrArtist(param.args[0]))) {
+                            return;
+                        }
+                        markMusicViewRendered(param.thisObject);
+                    }
+                });
+                hooked = true;
+            } catch (Throwable th) {
+                XLog.e("[面板就绪] Hook 媒体卡片签名回调失败: " + className, th);
+            }
+        }
+        return hooked;
+    }
+
+    private static void markMusicViewRendered(Object target) {
+        if (!(target instanceof View)) {
+            return;
+        }
+        View view = (View) target;
+        boolean ready = PanelReadyPolicy.isViewReadyForRender(
+                view.isAttachedToWindow(),
+                view.isShown(),
+                view.getWidth(),
+                view.getHeight(),
+                true);
+        if (!ready) {
+            return;
+        }
+        String pkg = AutoPlayAllHook.getPanelRenderPackage();
+        if (pkg == null) {
+            return;
+        }
+        VIEW_PACKAGE.put(target, pkg);
+        AutoPlayAllHook.markPanelRendered(pkg);
     }
 
     private static void handleCardRender(

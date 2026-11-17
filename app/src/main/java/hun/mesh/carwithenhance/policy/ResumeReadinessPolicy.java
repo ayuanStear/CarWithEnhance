@@ -2,6 +2,8 @@ package hun.mesh.carwithenhance.policy;
 
 /** Pure readiness rules for the official CarWith resume helper. */
 public final class ResumeReadinessPolicy {
+    public static final long OFFICIAL_RESUME_COLD_START_GRACE_MS = 3000L;
+
     private ResumeReadinessPolicy() {
     }
 
@@ -58,5 +60,36 @@ public final class ResumeReadinessPolicy {
                 && minIntervalMillis > 0L
                 && nowElapsed >= lastResumeAtElapsed
                 && nowElapsed - lastResumeAtElapsed < minIntervalMillis;
+    }
+
+    public static boolean shouldWaitForOfficialResumeBeforeFallback(
+            boolean autoPlayEnabled,
+            long officialRequestAtElapsed,
+            long connectionStartedAtElapsed,
+            long nowElapsed,
+            long graceMillis) {
+        return autoPlayEnabled
+                && officialRequestAtElapsed <= 0L
+                && connectionStartedAtElapsed > 0L
+                && graceMillis > 0L
+                && nowElapsed >= connectionStartedAtElapsed
+                && nowElapsed - connectionStartedAtElapsed < graceMillis;
+    }
+
+    public static boolean isWithinOfficialResumeColdStartGrace(
+            long officialStartedAtElapsed, long nowElapsed) {
+        return officialStartedAtElapsed > 0L
+                && nowElapsed >= officialStartedAtElapsed
+                && nowElapsed - officialStartedAtElapsed
+                < OFFICIAL_RESUME_COLD_START_GRACE_MS;
+    }
+
+    public static boolean shouldAllowFallbackWakeAttempt(int attemptIndex) {
+        return attemptIndex == 1
+                || attemptIndex == 2
+                || attemptIndex == 3
+                || attemptIndex == 6
+                || attemptIndex == 9
+                || attemptIndex == 10;
     }
 }

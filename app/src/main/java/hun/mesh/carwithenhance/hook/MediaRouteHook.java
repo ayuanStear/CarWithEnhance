@@ -121,6 +121,10 @@ public final class MediaRouteHook implements IHook {
                 + ", current=" + AutoPlayAllHook.isCurrentMediaTarget(pkg)
                 + ", ready=" + AutoPlayAllHook.isMediaSessionReady(pkg)
                 + ", active=" + pageActive + ")");
+        if ("source_from_apps".equals(request.source)) {
+            // 用户从应用列表手动打开媒体应用：只打开定制页，不自动续播。
+            AutoPlayAllHook.markManualOpen(pkg);
+        }
         if (pageActive) {
             // Consume the click instead of letting the host fall through to
             // its native Activity branch while the custom page is already up.
@@ -142,7 +146,7 @@ public final class MediaRouteHook implements IHook {
         }
         ROUTE_IN_FLIGHT.put(pkg, Long.valueOf(now));
         AutoPlayAllHook.learnCurrentMediaPublic(pkg);
-        AutoPlayAllHook.prepareMediaSession(context, pkg);
+        AutoPlayAllHook.prepareMediaSession(context, pkg, false);
         AutoPlayAllHook.log(context, "媒体路由等待媒体会话就绪: " + pkg);
         param.setResult(null);
         pollAndReplay(request, now);
@@ -168,11 +172,13 @@ public final class MediaRouteHook implements IHook {
                 }
                 long elapsed = SystemClock.elapsedRealtime() - startedAt;
                 if (elapsed >= PREPARE_TIMEOUT_MS) {
-                    AutoPlayAllHook.prepareMediaSession(context, request.packageName);
                     ROUTE_IN_FLIGHT.remove(request.packageName);
+                    // 不回退官方路由（那会打开原生 Activity），直接打开定制页，
+                    // 定制页会自行等待媒体会话就绪。这样有定制页的应用只会
+                    // 显示定制页，不会偶尔掉回原生页。
                     AutoPlayAllHook.log(context,
-                            "媒体会话准备超时，回退官方路由: " + request.packageName);
-                    invokeOriginal(request);
+                            "媒体会话准备超时，仍打开定制媒体页: " + request.packageName);
+                    openCustomMediaPage(context, request.packageName, request.source);
                     return;
                 }
                 handler().postDelayed(this, PREPARE_POLL_MS);
@@ -265,7 +271,7 @@ public final class MediaRouteHook implements IHook {
             openCustomMediaPage(context, pkg, "source_from_media_guard");
             return;
         }
-        AutoPlayAllHook.prepareMediaSession(context, pkg);
+        AutoPlayAllHook.prepareMediaSession(context, pkg, false);
         AutoPlayAllHook.log(context, "原生页面防护等待媒体会话: " + pkg);
         handler().postDelayed(new Runnable() {
             @Override
