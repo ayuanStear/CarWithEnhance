@@ -10,6 +10,7 @@ import hun.mesh.carwithenhance.utils.XLog;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -27,6 +28,7 @@ public class LyricSourceHook implements IHook {
     private static final String MEDIA_ID_KEY = "android.media.metadata.MEDIA_ID";
     private static final long LYRIC_LOOKUP_GRACE_MS = 1500L;
     private static final Map<String, Long> EMPTY_SINCE = new ConcurrentHashMap<>();
+    private static final Set<String> LYRICS_SEEN = ConcurrentHashMap.newKeySet();
     private static volatile String sLastMediaId;
 
     @Override
@@ -61,13 +63,28 @@ public class LyricSourceHook implements IHook {
                         String nativeLyric = nativeResult instanceof String
                                 ? (String) nativeResult
                                 : null;
-                        if (LyricFallbackPolicy.isMeaningfulLyric(nativeLyric)
-                                || LyricFallbackPolicy.isMeaningfulLyric(metadataLyric)) {
+                        String mediaId = mediaIdentity(bundle);
+                        boolean metadataHasLyrics =
+                                LyricFallbackPolicy.isMeaningfulLyric(metadataLyric);
+                        boolean nativeHasLyrics =
+                                LyricFallbackPolicy.isMeaningfulLyric(nativeLyric);
+                        if (metadataHasLyrics || nativeHasLyrics) {
+                            LYRICS_SEEN.add(mediaId);
                             removePlaceholderState(bundle);
+                            if (metadataHasLyrics && !metadataLyric.equals(nativeLyric)) {
+                                param.setResult(metadataLyric);
+                            }
                             return;
                         }
 
-                        String mediaId = mediaIdentity(bundle);
+                        if (LYRICS_SEEN.contains(mediaId)) {
+                            String fallback = LyricFallbackPolicy.fallbackAfterKnownLyrics();
+                            if (fallback == null && !"".equals(nativeLyric)) {
+                                param.setResult("");
+                            }
+                            return;
+                        }
+
                         long now = SystemClock.elapsedRealtime();
                         if (LyricFallbackPolicy.shouldResetNoLyricTimer(
                                 sLastMediaId, mediaId)) {
@@ -80,14 +97,18 @@ public class LyricSourceHook implements IHook {
                             emptySince = Long.valueOf(now);
                         }
                         long elapsed = now - emptySince.longValue();
+                        if (!LyricFallbackPolicy.canShowPlaceholderAfterGrace(
+                                false, elapsed, LYRIC_LOOKUP_GRACE_MS)) {
+                            if (!"".equals(nativeLyric)) {
+                                param.setResult("");
+                            }
+                            return;
+                        }
                         String chosen = LyricFallbackPolicy.chooseResult(
                                 nativeLyric,
                                 metadataLyric,
                                 elapsed,
                                 LYRIC_LOOKUP_GRACE_MS);
-                        if (chosen.isEmpty() && nativeLyric != null) {
-                            chosen = "";
-                        }
                         if (chosen.equals(nativeLyric)) {
                             return;
                         }
@@ -159,9 +180,14 @@ public class LyricSourceHook implements IHook {
         if (mediaId == null || mediaId.trim().isEmpty()) {
             mediaId = bundle.getString("android.media.metadata.TITLE", "");
         }
-        return mediaId == null || mediaId.trim().isEmpty()
-                ? "unknown"
-                : mediaId;
+        if (mediaId == null || mediaId.trim().isEmpty()) {
+            return "unknown";
+        }
+        if (LyricFallbackPolicy.shouldResetNoLyricTimer(sLastMediaId, mediaId)) {
+            LYRICS_SEEN.clear();
+            sLastMediaId = mediaId;
+        }
+        return mediaId;
     }
 
     private static void removePlaceholderState(Bundle bundle) {

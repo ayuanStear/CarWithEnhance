@@ -50,4 +50,17 @@ public final class LyricFallbackPolicy {
         }
         return !currentMediaId.equals(previousMediaId);
     }
+
+    public static boolean canShowPlaceholderAfterGrace(
+            boolean lyricsSeenForTrack,
+            long elapsedMs,
+            long graceMs) {
+        return !lyricsSeenForTrack
+                && graceMs > 0L
+                && elapsedMs >= graceMs;
+    }
+
+    public static String fallbackAfterKnownLyrics() {
+        return null;
+    }
 }

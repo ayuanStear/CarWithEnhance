@@ -2,6 +2,7 @@ package hun.mesh.carwithenhance.policy;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
@@ -53,5 +54,20 @@ public class LyricFallbackPolicyTest {
         assertTrue(LyricFallbackPolicy.shouldResetNoLyricTimer(null, "id-1"));
         assertTrue(LyricFallbackPolicy.shouldResetNoLyricTimer("id-1", "id-2"));
         assertFalse(LyricFallbackPolicy.shouldResetNoLyricTimer("id-1", "id-1"));
+    }
+
+    @Test
+    public void onceATrackHasLyricsLaterEmptyFramesNeverShowPlaceholder() {
+        assertFalse(LyricFallbackPolicy.canShowPlaceholderAfterGrace(
+                true, GRACE_MS, GRACE_MS));
+        assertTrue(LyricFallbackPolicy.canShowPlaceholderAfterGrace(
+                false, GRACE_MS, GRACE_MS));
+        assertFalse(LyricFallbackPolicy.canShowPlaceholderAfterGrace(
+                false, GRACE_MS - 1L, GRACE_MS));
+    }
+
+    @Test
+    public void emptyResultAfterKnownLyricsRemainsEmpty() {
+        assertNull(LyricFallbackPolicy.fallbackAfterKnownLyrics());
     }
 }
