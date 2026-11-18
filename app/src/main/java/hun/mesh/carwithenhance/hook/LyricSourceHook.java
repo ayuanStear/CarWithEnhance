@@ -68,12 +68,19 @@ public class LyricSourceHook implements IHook {
                                 LyricFallbackPolicy.isMeaningfulLyric(metadataLyric);
                         boolean nativeHasLyrics =
                                 LyricFallbackPolicy.isMeaningfulLyric(nativeLyric);
-                        if (metadataHasLyrics || nativeHasLyrics) {
+                        if (nativeHasLyrics) {
+                            // 原生 LYRICS_WHOLE 已是完整歌词，绝不能再用较短的
+                            // 元数据歌词（往往只有一行）覆盖它，否则面板只会
+                            // 显示单行歌词。
                             LYRICS_SEEN.add(mediaId);
                             removePlaceholderState(bundle);
-                            if (metadataHasLyrics && !metadataLyric.equals(nativeLyric)) {
-                                param.setResult(metadataLyric);
-                            }
+                            return;
+                        }
+                        if (metadataHasLyrics) {
+                            // 原生歌词缺失时才用其它元数据键兜底。
+                            LYRICS_SEEN.add(mediaId);
+                            removePlaceholderState(bundle);
+                            param.setResult(metadataLyric);
                             return;
                         }
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.5.6 - 2026-11-18
+
+- Fix lyrics showing only a single line: the lyric hook no longer overwrites
+  CarWith's native full `LYRICS_WHOLE` with a shorter metadata lyric. Native
+  full lyrics always win; the metadata fallback is only used when native
+  lyrics are missing.
+
 ## 2.5.5 - 2026-11-18
 
 - Restore panel-first cold-start resume: playback is dispatched only after the
