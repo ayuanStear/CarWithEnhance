@@ -1119,26 +1119,34 @@ public class AutoPlayAllHook implements IHook {
 
     /** Called by the CarWith card / media-page metadata callback. */
     static void markPanelRendered(final String pkg) {
-        if (pkg == null || pkg.isEmpty()) {
+        String resolved = pkg;
+        if (resolved == null || resolved.isEmpty()) {
+            resolved = getPanelRenderPackage();
+        }
+        if (resolved == null || resolved.isEmpty()) {
             return;
         }
+        final String renderPkg = resolved;
         long now = SystemClock.elapsedRealtime();
-        Long previous = PANEL_RENDERED_AT.get(pkg);
+        Long previous = PANEL_RENDERED_AT.get(renderPkg);
         if (!PanelReadyPolicy.shouldAcceptPanelRenderEvent(
                 previous == null ? 0L : previous.longValue(),
                 now,
                 PANEL_RENDER_EVENT_MIN_INTERVAL_MS)) {
             return;
         }
-        PANEL_RENDERED_AT.put(pkg, Long.valueOf(now));
-        if (sAppCtx == null || !sCarConnected || !pkg.equals(sWaitingPkg)) {
+        PANEL_RENDERED_AT.put(renderPkg, Long.valueOf(now));
+        log(sAppCtx, "面板已渲染: " + renderPkg
+                + " (waiting=" + sWaitingPkg
+                + ", connected=" + sCarConnected + ")");
+        if (sAppCtx == null || !sCarConnected || !renderPkg.equals(sWaitingPkg)) {
             return;
         }
         ensureHandler().post(new Runnable() {
             @Override
             public void run() {
-                if (pkg.equals(sWaitingPkg) && sCarConnected && !sResumeInFlight) {
-                    resumeAfterPanelIfReady(sCl, pkg);
+                if (renderPkg.equals(sWaitingPkg) && sCarConnected && !sResumeInFlight) {
+                    resumeAfterPanelIfReady(sCl, renderPkg);
                 }
             }
         });

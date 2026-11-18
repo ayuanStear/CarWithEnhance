@@ -220,12 +220,12 @@ public final class CarWithPanelReadyHook implements IHook {
             return;
         }
         View view = (View) target;
-        boolean ready = PanelReadyPolicy.isViewReadyForRender(
-                view.isAttachedToWindow(),
-                view.isShown(),
-                view.getWidth(),
-                view.getHeight(),
-                true);
+        // The dock/home music card can be laid out and bound while the map is
+        // the foreground activity; don't require isShown(), otherwise cold
+        // start on a map-first layout never marks the panel rendered.
+        boolean ready = view.isAttachedToWindow()
+                && view.getWidth() > 0
+                && view.getHeight() > 0;
         if (!ready) {
             return;
         }
@@ -249,10 +249,13 @@ public final class CarWithPanelReadyHook implements IHook {
             pkg = view == null ? null : VIEW_PACKAGE.get(view);
         }
         if (pkg == null) {
-            pkg = AutoPlayAllHook.getCurrentMediaPackage();
+            pkg = AutoPlayAllHook.getPanelRenderPackage();
         }
         if (pkg != null) {
             AutoPlayAllHook.markPanelRendered(pkg);
+        } else {
+            AutoPlayAllHook.log(AutoPlayAllHook.getAppContext(),
+                    "卡片渲染回调无法归属播放器: pkgHint=" + pkgHint);
         }
     }
 
@@ -327,13 +330,16 @@ public final class CarWithPanelReadyHook implements IHook {
         if (metadata == null || !hasTitleOrArtist(metadata)) {
             return;
         }
-        String pkg = AutoPlayAllHook.getCurrentMediaPackage();
+        String pkg = AutoPlayAllHook.getPanelRenderPackage();
         if (pkg == null) {
             Object outer = findOuter(param.thisObject, pagerClass);
             pkg = findMediaPackageField(outer);
         }
         if (pkg != null) {
             AutoPlayAllHook.markPanelRendered(pkg);
+        } else {
+            AutoPlayAllHook.log(AutoPlayAllHook.getAppContext(),
+                    "媒体页渲染回调无法归属播放器");
         }
     }
 

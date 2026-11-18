@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.5.8 - 2026-11-18
+
+- Fix cold-start resume for non-QQ players: the panel-render attribution now
+  falls back to the package being awaited instead of the live media-manager
+  package, which is empty while the player is still waking.
+- Stop requiring `isShown()` on the dock/home music card before marking the
+  panel rendered (map-first layouts keep the card attached but not shown).
+- Log every panel render event and every unattributable render callback for
+  easier cold-start diagnosis.
+
 ## 2.5.7 - 2026-11-18
 
 - Fix disconnect pause/release logs always reporting 0 ms (elapsed time was
