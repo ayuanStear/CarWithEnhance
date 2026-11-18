@@ -5,8 +5,8 @@
 ## 版本
 
 ```text
-versionCode: 57
-versionName: 2.5.4-panel-reconcile
+versionCode: 58
+versionName: 2.5.5-panel-first
 包名:        hun.mesh.carwithenhance
 minSdk:      29
 targetSdk:   36

@@ -93,7 +93,6 @@ public class AutoPlayAllHook implements IHook {
     private static final long PANEL_RENDER_FRESH_MS = 30000L;
     private static final long PANEL_REFRESH_MIN_INTERVAL_MS = 600L;
     private static final long PANEL_RENDER_EVENT_MIN_INTERVAL_MS = 1000L;
-    private static final long SESSION_WAIT_FORCE_PLAY_MS = 1500L;
     private static final long OFFICIAL_RESUME_GRACE_MS =
             ResumeReadinessPolicy.OFFICIAL_RESUME_COLD_START_GRACE_MS;
     private static final Map<String, String> PLAYBACK_SERVICES;
@@ -1182,18 +1181,18 @@ public class AutoPlayAllHook implements IHook {
 
     /**
      * Starts/binds only the player service so the app exposes a MediaSession.
-     * Never sends a media key or calls play(): playback must wait for the panel.
+     * Never sends a play key or calls play(): playback must wait for the panel.
+     * A pause key is used as a neutral wake when the service cannot be bound or
+     * started, because it starts the media receiver/process without playback.
      */
     public static boolean prepareMediaSession(Context context, String pkg) {
-        return prepareMediaSession(context, pkg, true);
+        return prepareMediaSession(context, pkg, false);
     }
 
     /**
-     * @param allowForcePlay true only for the car-connect resume flow. When the
-     *                       user opens a media app manually this must be false,
-     *                       otherwise QQ Music (whose browse service cannot be
-     *                       bound) receives a PLAY key and starts playing as
-     *                       soon as it is opened.
+     * @param allowForcePlay retained for API compatibility. The resume flow no
+     *                       longer force-plays: audio starts only after the
+     *                       CarWith music card / media page has rendered.
      */
     public static boolean prepareMediaSession(Context context, String pkg, boolean allowForcePlay) {
         if (context == null || pkg == null || pkg.isEmpty()) {
@@ -1202,36 +1201,17 @@ public class AutoPlayAllHook implements IHook {
         boolean bound = bindBrowseService(context, pkg);
         boolean started = false;
         boolean paused = false;
-        boolean played = false;
         if (!bound) {
             started = startPlayerService(context, pkg);
-            if (!started) {
-                if (allowForcePlay) {
-                    // 权限保护的服务（例如汽水音乐的 MEDIA_BROWSE 是 signature 级），
-                    // 既不能绑定也不能启动，只能直接发播放键唤醒，否则播放器永远
-                    // 不会建立 MediaSession，续播会一直卡在“等待媒体会话”。
-                    played = sendMediaKey(context, pkg, KeyEvent.KEYCODE_MEDIA_PLAY);
-                } else {
-                    // 手动打开媒体应用时不允许强制播放，只发暂停键兜底。
-                    paused = sendMediaKey(context, pkg, KeyEvent.KEYCODE_MEDIA_PAUSE);
-                }
-            } else {
-                // Some players auto-play when their playback service is started.
-                // A pause key is harmless when already paused and stops that
-                // accidental start; the real play happens after panel render.
-                paused = sendMediaKey(context, pkg, KeyEvent.KEYCODE_MEDIA_PAUSE);
-            }
-        } else if (allowForcePlay) {
-            // 绑定成功并不代表 MediaSession 已建立：网易云的 UCarService
-            // 就是“绑定成功但会话迟迟不出现”。续播场景下直接发 PLAY，
-            // 让播放器立刻启动并建立会话，避免反复等待超时拖慢续播。
-            played = sendMediaKey(context, pkg, KeyEvent.KEYCODE_MEDIA_PLAY);
+            // Some players auto-play when their playback service is started.
+            // A pause key is harmless when already paused and stops that
+            // accidental start; the real play happens after panel render.
+            paused = sendMediaKey(context, pkg, KeyEvent.KEYCODE_MEDIA_PAUSE);
         }
         log(context, "静默准备媒体会话: " + pkg
                 + " (绑定=" + bound + ", 启动服务=" + started
-                + ", 暂停键=" + paused + ", 播放键=" + played
-                + ", 允许强播=" + allowForcePlay + ")");
-        return bound || started || paused || played;
+                + ", 暂停键=" + paused + ")");
+        return bound || started || paused;
     }
 
     public static void refreshPanelFor(String pkg) {
@@ -1266,6 +1246,10 @@ public class AutoPlayAllHook implements IHook {
         }
         boolean rendered = panelRecentlyRendered(pkg);
         long afterPush = SystemClock.elapsedRealtime();
+        if (!rendered && pkg.equals(sWaitingPkg)) {
+            log(sAppCtx, "冷启动面板尚未渲染，保持等待: " + pkg);
+            return false;
+        }
         if (!PanelReadyPolicy.canStartPlayback(
                 true, rendered, start, afterPush,
                 PANEL_METADATA_MAX_WAIT_MS, PANEL_RENDER_MAX_WAIT_MS)) {
@@ -3272,21 +3256,6 @@ public class AutoPlayAllHook implements IHook {
                                     // 绑定拖慢网易云这类“绑定成功但会话出现慢”的播放器。
                                     prepareMediaSession(context, str);
                                     SESSION_WAIT_STARTED.put(str, Long.valueOf(nowWait));
-                                } else if (nowWait - waitStart.longValue() >= SESSION_WAIT_FORCE_PLAY_MS) {
-                                    if (str.equals(sResumedPkg)) {
-                                        SESSION_WAIT_STARTED.remove(str);
-                                        return;
-                                    }
-                                    // 静默绑定不会让多数播放器建立 MediaSession
-                                    // （网易云的 UCarService、汽水音乐的私有服务都
-                                    // 不会因为绑定而暴露会话），超时仍无会话时直接
-                                    // 发播放键强制唤醒，避免续播永久卡在等待。
-                                    boolean forced = sendMediaKey(
-                                            context, str, KeyEvent.KEYCODE_MEDIA_PLAY);
-                                    SESSION_WAIT_STARTED.remove(str);
-                                    log(context, "静默准备 " + (nowWait - waitStart.longValue())
-                                            + "ms 仍无会话，发播放键强制唤醒: " + str
-                                            + " (play=" + forced + ")");
                                 }
                                 return;
                             }

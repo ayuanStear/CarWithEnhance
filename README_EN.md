@@ -5,8 +5,8 @@ An Xposed / LSPosed module for Xiaomi CarWith. It improves media panel reliabili
 ## Version
 
 ```text
-versionCode: 57
-versionName: 2.5.4-panel-reconcile
+versionCode: 58
+versionName: 2.5.5-panel-first
 package:    hun.mesh.carwithenhance
 minSdk:     29
 targetSdk:  36

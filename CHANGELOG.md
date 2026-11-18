@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.5.5 - 2026-11-18
+
+- Restore panel-first cold-start resume: playback is dispatched only after the
+  CarWith music card / media page has really rendered, never via a play-key
+  force wake while the panel is still blank.
+- Remove the play-before-panel force wake (bind-success play key and the 1.5 s
+  no-session play key) that made audio start before the panel refreshed.
+- Use a pause key only as a neutral wake for services that cannot be bound or
+  started, so a dead player still gets a MediaSession without starting audio.
+
 ## 2.5.4 - 2026-11-17
 
 - Reconcile the CarWith media panel after a timeout-based resume even if the
