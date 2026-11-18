@@ -180,8 +180,9 @@ public class CarLinkStateHook implements IHook {
                     manager.getCastControllerDisconnectMethod(), new Object[]{new XC_MethodHook() {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
+                            boolean wasConnected = mConnected;
                             updateGlobalState(0);
-                            if (!mConnected && !isGloballyConnected()) {
+                            if (wasConnected) {
                                 handleDisconnect();
                             }
                         }

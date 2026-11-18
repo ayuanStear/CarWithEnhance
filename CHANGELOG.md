@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.5.7 - 2026-11-18
+
+- Fix disconnect pause/release logs always reporting 0 ms (elapsed time was
+  measured from the same instant twice).
+- Only run the disconnect stop flow on a real connected-to-disconnected
+  transition instead of on every disconnect callback.
+
 ## 2.5.6 - 2026-11-18
 
 - Fix lyrics showing only a single line: the lyric hook no longer overwrites

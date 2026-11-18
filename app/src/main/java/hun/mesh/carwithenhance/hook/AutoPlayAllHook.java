@@ -1985,6 +1985,7 @@ public class AutoPlayAllHook implements IHook {
         if (context == null) {
             return false;
         }
+        long pauseStartedAt = SystemClock.elapsedRealtime();
         int iPausePlayingSessions = pausePlayingSessions(context);
         if (iPausePlayingSessions <= 0) {
             if (isMusicActive(context)) {
@@ -1998,10 +1999,15 @@ public class AutoPlayAllHook implements IHook {
             log(null, "断开前无音乐在播，无需暂停 (系统音频状态=无音乐)");
             return false;
         }
-        log(null, "断开前先暂停播放: 已暂停 " + iPausePlayingSessions + " 个会话");
-        log(null, "播放已停下(" + (SystemClock.elapsedRealtime() - SystemClock.elapsedRealtime()) + "ms, 音频输出" + (waitAudioSilent(context, 1600L) ? "已静默" : "仍活动") + ")，继续断开流程");
+        log(null, "断开前先暂停播放: 已暂停 " + iPausePlayingSessions + " 个会话 (耗时 "
+                + (SystemClock.elapsedRealtime() - pauseStartedAt) + "ms)");
+        log(null, "播放已停下(音频输出" + (waitAudioSilent(context, 1600L) ? "已静默" : "仍活动") + ")，继续断开流程");
         if (isPrefEnabled(context, KEY_KILL_IMMEDIATELY, true)) {
-            log(null, "已请求播放器释放音轨: " + stopPlayingSessions(context) + " 个 (等了 " + (SystemClock.elapsedRealtime() - SystemClock.elapsedRealtime()) + "ms, 释放" + (waitAudioSilent(context, 1600L) ? "完成" : "超时") + ")");
+            long stopStartedAt = SystemClock.elapsedRealtime();
+            int stopped = stopPlayingSessions(context);
+            log(null, "已请求播放器释放音轨: " + stopped + " 个 (等了 "
+                    + (SystemClock.elapsedRealtime() - stopStartedAt) + "ms, 释放"
+                    + (waitAudioSilent(context, 1600L) ? "完成" : "超时") + ")");
         }
         return true;
     }

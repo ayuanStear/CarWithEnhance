@@ -5,8 +5,8 @@
 ## 版本
 
 ```text
-versionCode: 59
-versionName: 2.5.6-lyric-fix
+versionCode: 60
+versionName: 2.5.7-stability
 包名:        hun.mesh.carwithenhance
 minSdk:      29
 targetSdk:   36
