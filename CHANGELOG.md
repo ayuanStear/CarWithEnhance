@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.5.9 - 2026-11-19
+
+- Restore auto cold-start resume: the panel-first gate now falls back after a
+  10 s render timeout instead of waiting forever, so a slow or undetected card
+  render no longer blocks resume indefinitely.
+- Wake signature-protected / un-bindable players with a play key immediately
+  followed by a pause key, so their MediaSession is established without leaving
+  audio playing before the panel renders.
+
 ## 2.5.8 - 2026-11-18
 
 - Fix cold-start resume for non-QQ players: the panel-render attribution now

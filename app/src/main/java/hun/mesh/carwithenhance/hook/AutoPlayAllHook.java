@@ -89,7 +89,7 @@ public class AutoPlayAllHook implements IHook {
     private static final long PAUSE_POLL_MS = 100;
     private static final long DUPLICATE_RESUME_WINDOW_MS = 600L;
     private static final long PANEL_METADATA_MAX_WAIT_MS = 4500L;
-    private static final long PANEL_RENDER_MAX_WAIT_MS = 5000L;
+    private static final long PANEL_RENDER_MAX_WAIT_MS = 10000L;
     private static final long PANEL_RENDER_FRESH_MS = 30000L;
     private static final long PANEL_REFRESH_MIN_INTERVAL_MS = 600L;
     private static final long PANEL_RENDER_EVENT_MIN_INTERVAL_MS = 1000L;
@@ -1209,17 +1209,27 @@ public class AutoPlayAllHook implements IHook {
         boolean bound = bindBrowseService(context, pkg);
         boolean started = false;
         boolean paused = false;
+        boolean played = false;
         if (!bound) {
             started = startPlayerService(context, pkg);
-            // Some players auto-play when their playback service is started.
-            // A pause key is harmless when already paused and stops that
-            // accidental start; the real play happens after panel render.
-            paused = sendMediaKey(context, pkg, KeyEvent.KEYCODE_MEDIA_PAUSE);
+            if (!started) {
+                // Signature-protected / un-bindable services only establish a
+                // MediaSession when woken by a media key. PLAY wakes the
+                // receiver, then PAUSE suppresses the premature playback so
+                // audio still waits for the panel.
+                played = sendMediaKey(context, pkg, KeyEvent.KEYCODE_MEDIA_PLAY);
+                paused = sendMediaKey(context, pkg, KeyEvent.KEYCODE_MEDIA_PAUSE);
+            } else {
+                // Some players auto-play when their playback service is started.
+                // A pause key is harmless when already paused and stops that
+                // accidental start; the real play happens after panel render.
+                paused = sendMediaKey(context, pkg, KeyEvent.KEYCODE_MEDIA_PAUSE);
+            }
         }
         log(context, "静默准备媒体会话: " + pkg
                 + " (绑定=" + bound + ", 启动服务=" + started
-                + ", 暂停键=" + paused + ")");
-        return bound || started || paused;
+                + ", 暂停键=" + paused + ", 播放键=" + played + ")");
+        return bound || started || paused || played;
     }
 
     public static void refreshPanelFor(String pkg) {
@@ -1255,8 +1265,11 @@ public class AutoPlayAllHook implements IHook {
         boolean rendered = panelRecentlyRendered(pkg);
         long afterPush = SystemClock.elapsedRealtime();
         if (!rendered && pkg.equals(sWaitingPkg)) {
-            log(sAppCtx, "冷启动面板尚未渲染，保持等待: " + pkg);
-            return false;
+            if (!panelWaitExceeded(pkg, PANEL_RENDER_MAX_WAIT_MS)) {
+                log(sAppCtx, "冷启动面板尚未渲染，保持等待: " + pkg);
+                return false;
+            }
+            log(sAppCtx, "冷启动面板等待超时，继续续播: " + pkg);
         }
         if (!PanelReadyPolicy.canStartPlayback(
                 true, rendered, start, afterPush,
