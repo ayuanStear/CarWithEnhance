@@ -5,8 +5,8 @@
 ## 版本
 
 ```text
-versionCode: 62
-versionName: 2.5.9-coldstart
+versionCode: 63
+versionName: 2.6.0-resume-now
 包名:        hun.mesh.carwithenhance
 minSdk:      29
 targetSdk:   36

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.6.0 - 2026-11-19
+
+- Restore resume-on-entry behavior: dispatch the resume as soon as the player
+  exposes track metadata and the panel has been pushed, instead of waiting for
+  a card render callback or a long render timeout. This brings cold-start
+  resume back to a few seconds.
+
 ## 2.5.9 - 2026-11-19
 
 - Restore auto cold-start resume: the panel-first gate now falls back after a

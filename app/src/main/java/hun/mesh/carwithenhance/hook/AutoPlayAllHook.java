@@ -1242,7 +1242,7 @@ public class AutoPlayAllHook implements IHook {
         }
     }
 
-    /** 面板先行：元数据就绪并推送到面板、且面板真正渲染后才下发续播。 */
+    /** 元数据就绪并推送到面板后立即续播，恢复“上车即续播”的体验。 */
     private static boolean resumeAfterPanelIfReady(ClassLoader classLoader, String pkg) {
         if (pkg == null || pkg.isEmpty()) {
             return false;
@@ -1262,26 +1262,9 @@ public class AutoPlayAllHook implements IHook {
         if (controller != null) {
             refreshCarWithMediaState(sAppCtx, pkg, controller, true);
         }
-        boolean rendered = panelRecentlyRendered(pkg);
-        long afterPush = SystemClock.elapsedRealtime();
-        if (!rendered && pkg.equals(sWaitingPkg)) {
-            if (!panelWaitExceeded(pkg, PANEL_RENDER_MAX_WAIT_MS)) {
-                log(sAppCtx, "冷启动面板尚未渲染，保持等待: " + pkg);
-                return false;
-            }
-            log(sAppCtx, "冷启动面板等待超时，继续续播: " + pkg);
-        }
-        if (!PanelReadyPolicy.canStartPlayback(
-                true, rendered, start, afterPush,
-                PANEL_METADATA_MAX_WAIT_MS, PANEL_RENDER_MAX_WAIT_MS)) {
-            return false;
-        }
         boolean sent = resumeCarWith(classLoader, pkg);
         if (sent) {
             PANEL_WAIT_STARTED.remove(pkg);
-            if (!rendered) {
-                schedulePostResumePanelReconcile(pkg);
-            }
             if (pkg.equals(sWaitingPkg)) {
                 sWaitingPkg = null;
             }
