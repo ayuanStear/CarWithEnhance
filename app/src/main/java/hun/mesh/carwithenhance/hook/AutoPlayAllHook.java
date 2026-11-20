@@ -1215,10 +1215,17 @@ public class AutoPlayAllHook implements IHook {
             if (!started) {
                 // Signature-protected / un-bindable services only establish a
                 // MediaSession when woken by a media key. PLAY wakes the
-                // receiver, then PAUSE suppresses the premature playback so
-                // audio still waits for the panel.
+                // receiver; a delayed PAUSE stops the premature playback once
+                // the session has actually been created.
                 played = sendMediaKey(context, pkg, KeyEvent.KEYCODE_MEDIA_PLAY);
-                paused = sendMediaKey(context, pkg, KeyEvent.KEYCODE_MEDIA_PAUSE);
+                final Context wakeContext = context;
+                final String wakePkg = pkg;
+                ensureHandler().postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        sendMediaKey(wakeContext, wakePkg, KeyEvent.KEYCODE_MEDIA_PAUSE);
+                    }
+                }, 600L);
             } else {
                 // Some players auto-play when their playback service is started.
                 // A pause key is harmless when already paused and stops that
@@ -2086,6 +2093,15 @@ public class AutoPlayAllHook implements IHook {
     }
 
     public static void onCarDisconnected() {
+        String lastPlaying = sPlayingPkg;
+        if (lastPlaying == null || lastPlaying.isEmpty()) {
+            lastPlaying = sConfirmedPlayingPkg;
+        }
+        if (lastPlaying != null && !lastPlaying.isEmpty()
+                && isMediaApp(sCl, lastPlaying) && !isNeverKill(lastPlaying)) {
+            saveLastOpenedMediaApp(sAppCtx, lastPlaying);
+            log(sAppCtx, "断开时记录最后播放应用: " + lastPlaying);
+        }
         sCarConnected = false;
         unregisterSessionCallbacks();
         sConfirmedPlayingPkg = null;

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.6.1 - 2026-11-20
+
+- Record the app that was actually playing when the car disconnects, so the
+  next cold-start resume uses the last-played app instead of the configured
+  preferred app.
+- Delay the pause key after the play-key wake of un-bindable players so the
+  premature audio is stopped once the session has actually been created,
+  reducing "audio before the control panel loads".
+
 ## 2.6.0 - 2026-11-19
 
 - Restore resume-on-entry behavior: dispatch the resume as soon as the player
