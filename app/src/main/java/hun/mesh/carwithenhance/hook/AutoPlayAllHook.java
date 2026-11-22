@@ -153,7 +153,7 @@ public class AutoPlayAllHook implements IHook {
     private static MediaSessionManager.OnActiveSessionsChangedListener sSessionListener;
     private static ExecutorService sSwitchExec;
     private static volatile String sWaitingPkg;
-    private static final String[] FALLBACK = {"com.netease.cloudmusic", "com.luna.music", "com.kugou.android", "cmccwm.mobilemusic", "cn.kuwo.player", "com.miui.player"};
+    private static final String[] FALLBACK = {"com.netease.cloudmusic", "com.luna.music", "com.salt.music", "com.kugou.android", "cmccwm.mobilemusic", "cn.kuwo.player", "com.miui.player"};
     private static final Set<String> MUSIC_APPS = new HashSet<>(Arrays.asList(
             "com.netease.cloudmusic", "com.luna.music", "com.tencent.qqmusic",
             "com.salt.music", "com.kugou.android", "cn.kuwo.player",
@@ -1755,7 +1755,7 @@ public class AutoPlayAllHook implements IHook {
                     sActiveWokePkg = lastUsedMediaApp;
                     PANEL_WAIT_STARTED.put(lastUsedMediaApp, SystemClock.elapsedRealtime());
                     sWaitingPkg = lastUsedMediaApp;
-                    if (!autoPlayEnabled) {
+                    if (!autoPlayEnabled || !isCarwithMediaApp(sCl, lastUsedMediaApp)) {
                         prepareMediaSession(context, lastUsedMediaApp);
                     }
                     startRetryLoop(sCl, lastUsedMediaApp);
@@ -3197,14 +3197,28 @@ public class AutoPlayAllHook implements IHook {
     }
 
     /* JADX INFO: Access modifiers changed from: private */
+    private static boolean isCarwithMediaApp(ClassLoader classLoader, String str) {
+        if (str == null || str.isEmpty()) {
+            return false;
+        }
+        try {
+            Object list = XposedHelpers.callMethod(XposedHelpers.callStaticMethod(
+                    XposedHelpers.findClass(CARWITH_APP_MGR, classLoader), "U", new Object[0]),
+                    "K", new Object[]{"media_app"});
+            return list instanceof List && ((List) list).contains(str);
+        } catch (Throwable th) {
+            return false;
+        }
+    }
+
     public static boolean isTarget(ClassLoader classLoader, String str) {
         if (QQ_MUSIC.equals(str)) {
             return false;
         }
         try {
             Object objCallMethod = XposedHelpers.callMethod(XposedHelpers.callStaticMethod(XposedHelpers.findClass(CARWITH_APP_MGR, classLoader), "U", new Object[0]), "K", new Object[]{"media_app"});
-            if (objCallMethod instanceof List) {
-                return ((List) objCallMethod).contains(str);
+            if (objCallMethod instanceof List && ((List) objCallMethod).contains(str)) {
+                return true;
             }
         } catch (Throwable th) {
         }
