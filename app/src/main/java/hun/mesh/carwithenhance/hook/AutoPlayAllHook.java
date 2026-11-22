@@ -1769,6 +1769,13 @@ public class AutoPlayAllHook implements IHook {
     }
 
     private static String readLastUsedMediaApp() {
+        // CarWith 自己记录的 last-used 媒体应用反映用户最后一次选择，
+        // 比模块持久化的 PREF_LAST_MEDIA_APP 更新（后者只在真正播放时写入，
+        // 可能停在用户已手动结束的旧应用上，导致续播目标被改错）。
+        String carwithLastUsed = carwithLastUsedMediaApp();
+        if (carwithLastUsed != null && !carwithLastUsed.isEmpty()) {
+            return carwithLastUsed;
+        }
         String lastLaunched = null;
         Context context = sAppCtx;
         if (context != null) {
@@ -1777,9 +1784,9 @@ public class AutoPlayAllHook implements IHook {
         }
         return MediaPlaybackPolicy.chooseLastLaunched(
                 lastLaunched,
-                carwithLastUsedMediaApp(),
                 carwithCurrentMediaApp(),
                 selectedApp(),
+                readPrefMediaApp(),
                 pkg -> isMediaApp(sCl, pkg));
     }
 
@@ -1791,7 +1798,9 @@ public class AutoPlayAllHook implements IHook {
     }
 
     private static String selectedApp() {
-        if (sSelectedApp != null && sSelectedApp.length() > 0 && isMediaApp(sCl, sSelectedApp)) {
+        if (sSelectedApp != null && sSelectedApp.length() > 0
+                && (isMediaApp(sCl, sSelectedApp)
+                    || sSelectedApp.equals(carwithLastUsedMediaApp()))) {
             return sSelectedApp;
         }
         return readPrefMediaApp();
