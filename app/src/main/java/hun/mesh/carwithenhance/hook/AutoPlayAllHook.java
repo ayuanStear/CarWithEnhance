@@ -1846,9 +1846,9 @@ public class AutoPlayAllHook implements IHook {
     }
 
     private static String selectedApp() {
-        if (sSelectedApp != null && sSelectedApp.length() > 0
-                && (isMediaApp(sCl, sSelectedApp)
-                    || sSelectedApp.equals(carwithLastUsedMediaApp()))) {
+        // sSelectedApp 在连接时来自 readLastUsedMediaApp()，其余赋值点也都校验过，
+        // 这里直接采用，避免回落到已被污染的 prefer_media_app。
+        if (sSelectedApp != null && !sSelectedApp.isEmpty()) {
             return sSelectedApp;
         }
         return readPrefMediaApp();
