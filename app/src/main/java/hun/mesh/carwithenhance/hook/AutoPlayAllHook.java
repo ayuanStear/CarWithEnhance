@@ -50,6 +50,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
@@ -75,6 +76,7 @@ public class AutoPlayAllHook implements IHook {
     private static final String EXPERIENCE_PREF = "ucar_experience_app_added_category";
     private static final String KEY_CARWITH_AUTOPLAY = "prefer_auto_play";
     private static final String PREF_LAST_MEDIA_APP = "last_media_app";
+    private static final String DAU_MEDIA_PREFIX = "media_dau_time:";
     private static final String KEY_EXPERIENCE_TO_NORMAL = "hook_experience_to_normal_enabled";
     private static final String KEY_EXP_FLAGGED = "carwithenhance_exp_flagged";
     private static final String KEY_KILL_IMMEDIATELY = "hook_disconnect_kill_immediately_enabled";
@@ -152,6 +154,11 @@ public class AutoPlayAllHook implements IHook {
     private static ExecutorService sSwitchExec;
     private static volatile String sWaitingPkg;
     private static final String[] FALLBACK = {"com.netease.cloudmusic", "com.luna.music", "com.kugou.android", "cmccwm.mobilemusic", "cn.kuwo.player", "com.miui.player"};
+    private static final Set<String> MUSIC_APPS = new HashSet<>(Arrays.asList(
+            "com.netease.cloudmusic", "com.luna.music", "com.tencent.qqmusic",
+            "com.salt.music", "com.kugou.android", "cn.kuwo.player",
+            "cmccwm.mobilemusic", "com.miui.player", "com.spotify.music",
+            "com.google.android.apps.youtube.music", "com.apple.android.music"));
     private static final Set<String> EXPERIENCE_EXCLUDE = ExperienceAppPolicy.knownMapPackages();
     private static final Map<String, MediaBrowser> BROWSERS = new ConcurrentHashMap();
     private static final Map<String, Long> ATTEMPTS = new ConcurrentHashMap();
@@ -1769,6 +1776,13 @@ public class AutoPlayAllHook implements IHook {
     }
 
     private static String readLastUsedMediaApp() {
+        // CarWith 的 media_dau_time 记录用户最近真正用过的音乐应用（含落雪等
+        // 不在静态白名单里的 app），比可能被图标同步改写的 xa.c.d 更贴近
+        // 用户最后一次的选择。
+        String dauLast = lastDauMusicApp();
+        if (dauLast != null && !dauLast.isEmpty()) {
+            return dauLast;
+        }
         // CarWith 自己记录的 last-used 媒体应用反映用户最后一次选择，
         // 比模块持久化的 PREF_LAST_MEDIA_APP 更新（后者只在真正播放时写入，
         // 可能停在用户已手动结束的旧应用上，导致续播目标被改错）。
@@ -1795,6 +1809,40 @@ public class AutoPlayAllHook implements IHook {
             return;
         }
         context.getSharedPreferences(PREFS, 0).edit().putString(PREF_LAST_MEDIA_APP, pkg).apply();
+    }
+
+    private static String lastDauMusicApp() {
+        Context context = sAppCtx;
+        if (context == null) {
+            return null;
+        }
+        try {
+            Map<String, ?> values = context.getSharedPreferences("VALIDATION_MESSAGES", 0).getAll();
+            String best = null;
+            long bestAt = 0L;
+            for (Map.Entry<String, ?> entry : values.entrySet()) {
+                String key = entry.getKey();
+                if (key == null || !key.startsWith(DAU_MEDIA_PREFIX)) {
+                    continue;
+                }
+                Object value = entry.getValue();
+                if (!(value instanceof Long)) {
+                    continue;
+                }
+                String pkg = key.substring(DAU_MEDIA_PREFIX.length());
+                if (!MUSIC_APPS.contains(pkg)) {
+                    continue;
+                }
+                long at = ((Long) value).longValue();
+                if (at > bestAt) {
+                    bestAt = at;
+                    best = pkg;
+                }
+            }
+            return best;
+        } catch (Throwable th) {
+            return null;
+        }
     }
 
     private static String selectedApp() {
