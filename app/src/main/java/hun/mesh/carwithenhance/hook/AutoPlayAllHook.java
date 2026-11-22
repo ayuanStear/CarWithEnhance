@@ -1366,8 +1366,18 @@ public class AutoPlayAllHook implements IHook {
 
     private static boolean shouldPreserveDockIcon(Context context, String pkg) {
         return context != null && isMediaApp(sCl, pkg)
-                && MediaPlaybackPolicy.shouldPreserveDockIcon(
-                        isPlaying(context, pkg), playingOtherMedia(context, pkg));
+                && (MediaPlaybackPolicy.shouldPreserveDockIcon(
+                        isPlaying(context, pkg), playingOtherMedia(context, pkg))
+                    || isKilledCurrentFallback(context, pkg));
+    }
+
+    private static boolean isKilledCurrentFallback(Context context, String pkg) {
+        String current = sCurrentMediaPkg;
+        return current != null && !current.isEmpty()
+                && !current.equals(pkg)
+                && isMediaApp(sCl, current)
+                && !isProcessRunning(context, current)
+                && !hasSession(context, current);
     }
 
     private static void hookMediaAppPref(ClassLoader classLoader) {
