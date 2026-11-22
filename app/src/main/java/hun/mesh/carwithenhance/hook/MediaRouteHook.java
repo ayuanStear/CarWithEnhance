@@ -38,7 +38,6 @@ public final class MediaRouteHook implements IHook {
     private static final Set<String> CUSTOM_CAPABLE = new HashSet<>(Arrays.asList(
             "com.netease.cloudmusic",
             "com.tencent.qqmusic",
-            "com.luna.music",
             "com.kugou.android",
             "cmccwm.mobilemusic",
             "com.ifeng.fhdt",
