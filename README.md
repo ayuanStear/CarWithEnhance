@@ -2,13 +2,21 @@
 
 CarWith Enhance is an Xposed/LSPosed module for Xiaomi CarWith. It focuses on media panel reliability, resume coordination, custom media pages, lyric timing, disconnect behavior, and user-controlled player switching.
 
-Current release:
+Legacy Gradle source release:
 
 ```text
 versionCode: 49
 versionName: 2.4.6-auto-precise-60fps
 package: hun.mesh.carwithenhance
 ```
+
+## Latest prebuilt APK (v2.6.2)
+
+- APK: [`releases/CarWithEnhance-2.6.2-qishui-carmic-tabfix-logclean.apk`](releases/CarWithEnhance-2.6.2-qishui-carmic-tabfix-logclean.apk)
+- versionCode: `73`
+- versionName: `2.6.2-qishui-media-key-fallback-carmic-tabfix-logclean-r3`
+- SHA-256: `544a3962cd498d20bd170c489a7d70470bfa9db105f569ca7b51654ea01003f9`
+- Documentation: [`docs/v2.6.2/`](docs/v2.6.2/)
 
 ## Latest patch source snapshot (v2.6.2)
 
@@ -65,9 +73,9 @@ Release output:
 app/build/outputs/apk/release/app-release.apk
 ```
 
-## Prebuilt APK
+## Legacy prebuilt APK (v2.4.6)
 
-The prebuilt release is available at:
+The legacy Gradle release is available at:
 
 ```text
 releases/CarWithEnhance-2.4.6-auto-precise-60fps.apk

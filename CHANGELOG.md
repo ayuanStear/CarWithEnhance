@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.6.2 - 2026-11-26
+
+- Reworked the resume path around CarWith's native `pa.a#g` auto-play target rewrite without custom 3/5/8-second retries.
+- Added an explicit stopped-package media-key fallback for Qishui (`com.luna.music`).
+- Disabled NetEase root-tab recording/restoration for `com.netease.cloudmusic`.
+- Added CarLife head-unit microphone requests on the XiaoAi VR channel (`0x10024` / `0x10023`).
+- Added `RuntimeLogPolicy` to remove routine registration, polling, media-tab, audio-state, and casting-mask noise while preserving errors and key events.
+- Added source snapshot, release documentation, and v73 prebuilt APK under `source-v2.6.2/`, `docs/v2.6.2/`, and `releases/`.
+
 ## 2.4.6 - 2026-11-09
 
 - Hidden the obsolete `精确60FPS帧调度` switch from CarWith Enhance settings.
