@@ -10,6 +10,14 @@ versionName: 2.4.6-auto-precise-60fps
 package: hun.mesh.carwithenhance
 ```
 
+## Latest patch source snapshot (v2.6.2)
+
+The helper and patch source used for the latest CarWithX v2.6.2 build is under
+[`source-v2.6.2/`](source-v2.6.2/). It covers native auto-play target rewrite,
+Qishui media-key fallback, CarLife head-unit microphone requests, NetEase tab
+protection, and informational log cleanup. The proprietary CarWith base APK,
+signing keys, logs, and device-specific outputs are intentionally excluded.
+
 ## Features
 
 - Snapshot-based media panel refresh for initial resume and same-package track changes.

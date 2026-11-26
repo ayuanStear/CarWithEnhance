@@ -1,0 +1,16 @@
+# Local build inputs and outputs
+samples/*.apk
+samples/**/*.apk
+tools/*.jar
+keys/*
+!keys/README.md
+output/
+work/
+*.apk
+*.jks
+*.keystore
+*.log
+__pycache__/
+*.pyc
+local.properties
+.idea/
