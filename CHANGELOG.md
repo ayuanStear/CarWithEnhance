@@ -11,6 +11,9 @@
   first 20 seconds, avoiding the start/stop/restart cycle.
 - Keep the panel-render hook removed and retain the 2.6.2 Qishui, CarMic,
   NetEase-tab, and log-cleanup changes.
+- Stop the resume retry loop after the first successful resume; r1 could
+  repeat "会话已就绪且面板已渲染，下发官方续播" every 1-3 seconds and make the
+  CarWith UI/input feel stuck.
 
 ## 2.6.2 - 2026-11-26
 

@@ -19,6 +19,10 @@ This variant keeps the 2.6.2 Qishui/CarMic/NetEase-tab fixes and restores the
   first 20 seconds after `displayConnected`, `AllAppCarResume` suppresses that
   native call. This prevents the "start, stop, restart" sequence seen around
   08:08.
+- The retry loop now stops after the first successful resume, and `preWake`
+  records the resumed package. This fixes the r1 loop that repeated
+  "会话已就绪且面板已渲染，下发官方续播" every 1-3 seconds and caused CarWith
+  UI/input churn.
 - `RuntimeLogPolicy` remains enabled; errors and key resume/connection logs are
   still written.
 

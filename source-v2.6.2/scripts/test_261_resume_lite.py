@@ -19,10 +19,10 @@ from androguard.core.dex import DEX
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = Path(os.environ.get("CARWITHX_OUTPUT_DIR", ROOT / "output"))
-APK_PATH = Path(os.environ.get("CARWITHX_APK", OUTPUT_DIR / "CarWithEnhance-2.6.3-prewake-fast-resume.apk"))
+APK_PATH = Path(os.environ.get("CARWITHX_APK", OUTPUT_DIR / "CarWithEnhance-2.6.3-prewake-fast-resume-r2.apk"))
 EXPECTED_PACKAGE = "hun.mesh.carwithenhance"
-EXPECTED_VERSION_CODE = "74"
-EXPECTED_VERSION_NAME = "2.6.3-qishui-carmic-tabfix-prewake-fast-resume"
+EXPECTED_VERSION_CODE = "75"
+EXPECTED_VERSION_NAME = "2.6.3-qishui-carmic-tabfix-prewake-fast-resume-r2"
 
 def find_method(cls, name: str, descriptor_part: str = ""):
     for method in cls.get_methods():
@@ -243,7 +243,7 @@ class ResumeLiteApkTests(unittest.TestCase):
 
     def test_sha256sums_file_matches_apk(self) -> None:
         digest = hashlib.sha256(APK_PATH.read_bytes()).hexdigest().upper()
-        sums = (OUTPUT_DIR / "CarWithEnhance-2.6.3-prewake-fast-resume.SHA256SUMS.txt").read_text(
+        sums = (OUTPUT_DIR / "CarWithEnhance-2.6.3-prewake-fast-resume-r2.SHA256SUMS.txt").read_text(
             encoding="ascii"
         )
         self.assertIn(digest, sums.upper())

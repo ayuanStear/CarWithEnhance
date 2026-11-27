@@ -31,10 +31,10 @@ XPOSED_API = TOOLS / "xposed-api-82.jar"
 KEYSTORE = Path(os.environ.get("CARWITHX_KEYSTORE", str(KEYS / "carwithx-release.jks")))
 KEY_ALIAS = os.environ.get("CARWITHX_KEY_ALIAS", "carwithx")
 KEY_PASSWORD = os.environ.get("CARWITHX_KEY_PASSWORD", "")
-FINAL_APK = OUTPUT / "CarWithEnhance-2.6.3-prewake-fast-resume.apk"
+FINAL_APK = OUTPUT / "CarWithEnhance-2.6.3-prewake-fast-resume-r2.apk"
 PACKAGE_NAME = "hun.mesh.carwithenhance"
-VERSION_CODE = "74"
-VERSION_NAME = "2.6.3-qishui-carmic-tabfix-prewake-fast-resume"
+VERSION_CODE = "75"
+VERSION_NAME = "2.6.3-qishui-carmic-tabfix-prewake-fast-resume-r2"
 ANDROID_NS = "http://schemas.android.com/apk/res/android"
 A = f"{{{ANDROID_NS}}}"
 

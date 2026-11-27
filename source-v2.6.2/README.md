@@ -38,9 +38,9 @@ python scripts/test_261_resume_lite.py -v
 The build script patches only the decompiled base APK and emits a signed APK under `output/`. This branch now builds the 2.6.3 pre-wake variant:
 
 ```text
-versionCode: 74
-versionName: 2.6.3-qishui-carmic-tabfix-prewake-fast-resume
-SHA-256: 8e717ab407987ec703c572e9f029bfd13d4844cdaac09be036ac92a410b0816a
+versionCode: 75
+versionName: 2.6.3-qishui-carmic-tabfix-prewake-fast-resume-r2
+SHA-256: 02e420c487f785b21093a99ce8c4f77b7db3c8db7455429a52312146077e03c2
 ```
 
 The original 2.6.2 logclean snapshot identity was versionCode 73 / SHA-256 `544a3962...03f9`. See `PREWAKE-2.6.3.md` for the restored resume path and trade-offs.
