@@ -376,7 +376,6 @@ public final class MediaRouteHook implements IHook {
         boolean force = MediaRoutePolicy.shouldPreferCustom(
                 request.packageName.equals(requestedPackage),
                 targetIsCurrent,
-                sessionReady,
                 customCapable,
                 prefersNative);
         if (!force) {
