@@ -1753,7 +1753,8 @@ public class AutoPlayAllHook implements IHook {
             sWaitingPkg = pkg;
             PANEL_WAIT_STARTED.putIfAbsent(pkg, SystemClock.elapsedRealtime());
             startRetryLoop(classLoader, pkg);
-            if (running && session && resumeAfterPanelIfReady(classLoader, pkg)) {
+            if (running && session && isPlaying(sAppCtx, pkg)
+                    && resumeAfterPanelIfReady(classLoader, pkg)) {
                 sResumedPkg = pkg;
                 cancelRetryTasks();
                 return true;
