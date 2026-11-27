@@ -192,6 +192,7 @@ public final class AllAppCarResume {
 
     private static String prewakePackage;
     private static boolean moduleResumeCompleted;
+    private static boolean dispatchingResume;
 
     private static void resumePrewakeTarget(Context context, long now) {
         prewakePackage = null;
@@ -211,6 +212,10 @@ public final class AllAppCarResume {
     }
 
     private static void dispatchModuleResume(Context context, String pkg) {
+        if (dispatchingResume) {
+            return;
+        }
+        dispatchingResume = true;
         try {
             Class<?> hook = Class.forName(
                     "hun.mesh.carwithenhance.hook.AutoPlayAllHook", false,
@@ -228,6 +233,8 @@ public final class AllAppCarResume {
                     + ", running=" + running + ", completed=" + moduleResumeCompleted);
         } catch (Throwable throwable) {
             XposedBridge.log(TAG + ": prewake resume failed: " + throwable);
+        } finally {
+            dispatchingResume = false;
         }
     }
 
