@@ -220,10 +220,12 @@ class ResumeLiteApkTests(unittest.TestCase):
         self.assertFalse(any("resume attempt " in value for value in strings))
         self.assertFalse(any("STATE_PLAYING confirmed" in value for value in strings))
         self.assertFalse(any("all remaining retries canceled" in value for value in strings))
-        self.assertTrue(any("native auto-play suppressed, already playing " in value
+        self.assertTrue(any("native auto-play suppressed, pre-wake owns " in value
                             for value in strings))
         _, resume_cls = self.classes["LAllAppCarResume;"]
         self.assertIsNotNone(find_method(resume_cls, "isPackagePlaying"))
+        self.assertIsNotNone(find_method(resume_cls, "isPackageRunning"))
+        self.assertIsNotNone(find_method(resume_cls, "isPrewakeOwned"))
 
         hook_classes = [
             cls for name, (_, cls) in self.classes.items()

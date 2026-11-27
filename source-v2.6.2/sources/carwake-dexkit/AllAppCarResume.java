@@ -1,3 +1,4 @@
+import android.app.ActivityManager;
 import android.app.AndroidAppHelper;
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -125,12 +126,12 @@ public final class AllAppCarResume {
                                     XposedBridge.log(TAG + ": native auto-play target "
                                             + requested + " -> " + selected);
                                 }
-                                if (enabled && isPackagePlaying(context, selected)) {
+                                if (enabled && isPrewakeOwned(context, selected)) {
                                     // The 2.6.1 pre-wake path may already have started the
                                     // saved player. Suppress CarWith's late native auto-play
                                     // so it cannot stop/restart that same process.
                                     param.setResult(null);
-                                    XposedBridge.log(TAG + ": native auto-play suppressed, already playing "
+                                    XposedBridge.log(TAG + ": native auto-play suppressed, pre-wake owns "
                                             + selected);
                                     return;
                                 }
@@ -228,6 +229,45 @@ public final class AllAppCarResume {
         }
     }
 
+
+
+    private static boolean isPrewakeOwned(Context context, String packageName) {
+        if (connectedSince <= 0L
+                || SystemClock.elapsedRealtime() - connectedSince > 20000L) {
+            return false;
+        }
+        return isPackagePlaying(context, packageName) || isPackageRunning(context, packageName);
+    }
+
+    private static boolean isPackageRunning(Context context, String packageName) {
+        if (context == null || TextUtils.isEmpty(packageName)) {
+            return false;
+        }
+        try {
+            ActivityManager manager = (ActivityManager)
+                    context.getSystemService(Context.ACTIVITY_SERVICE);
+            if (manager == null) {
+                return false;
+            }
+            List<ActivityManager.RunningAppProcessInfo> processes = manager.getRunningAppProcesses();
+            if (processes == null) {
+                return false;
+            }
+            String prefix = packageName + ":";
+            for (ActivityManager.RunningAppProcessInfo process : processes) {
+                if (process == null || process.processName == null) {
+                    continue;
+                }
+                if (process.processName.equals(packageName)
+                        || process.processName.startsWith(prefix)) {
+                    return true;
+                }
+            }
+        } catch (Throwable throwable) {
+            XposedBridge.log(TAG + ": process check failed: " + throwable);
+        }
+        return false;
+    }
 
     private static boolean isPackagePlaying(Context context, String packageName) {
         if (context == null || TextUtils.isEmpty(packageName)) {

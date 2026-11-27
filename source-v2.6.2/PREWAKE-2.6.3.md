@@ -15,8 +15,10 @@ This variant keeps the 2.6.2 Qishui/CarMic/NetEase-tab fixes and restores the
 - `AllAppCarResume` arms its playing-package tracker after 2 seconds instead of
   15 seconds.
 - When CarWith's late native auto-play runs while the saved player is already
-  playing/buffering/connecting, `AllAppCarResume` suppresses that native call.
-  This prevents the "start, stop, restart" sequence seen around 08:08.
+  playing/buffering/connecting, or its process is already running within the
+  first 20 seconds after `displayConnected`, `AllAppCarResume` suppresses that
+  native call. This prevents the "start, stop, restart" sequence seen around
+  08:08.
 - `RuntimeLogPolicy` remains enabled; errors and key resume/connection logs are
   still written.
 
