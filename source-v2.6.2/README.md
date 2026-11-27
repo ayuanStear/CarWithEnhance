@@ -35,13 +35,15 @@ python scripts/build_261_resume_lite.py
 python scripts/test_261_resume_lite.py -v
 ```
 
-The build script patches only the decompiled base APK and emits a signed APK under `output/`. The expected source identity for this snapshot is:
+The build script patches only the decompiled base APK and emits a signed APK under `output/`. This branch now builds the 2.6.3 pre-wake variant:
 
 ```text
-versionCode: 73
-versionName: 2.6.2-qishui-media-key-fallback-carmic-tabfix-logclean-r3
-SHA-256: 544a3962cd498d20bd170c489a7d70470bfa9db105f569ca7b51654ea01003f9
+versionCode: 74
+versionName: 2.6.3-qishui-carmic-tabfix-prewake-fast-resume
+SHA-256: 8e717ab407987ec703c572e9f029bfd13d4844cdaac09be036ac92a410b0816a
 ```
+
+The original 2.6.2 logclean snapshot identity was versionCode 73 / SHA-256 `544a3962...03f9`. See `PREWAKE-2.6.3.md` for the restored resume path and trade-offs.
 
 ## Focused tests
 
