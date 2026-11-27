@@ -208,12 +208,17 @@ public final class AllAppCarResume {
         if (!NativeResumePolicy.isPrewakeCurrent(connectedSince, now)) {
             return;
         }
-        String pkg = loadLastPackage(context);
-        if (TextUtils.isEmpty(pkg) || !isPackageInstalled(context, pkg)) {
-            return;
+        // Let AutoPlayAllHook.preWakeLastUsedApp() choose the target.
+        // Two separate selection paths caused Qishui to be resumed instead
+        // of the actual last-played app.
+        try {
+            Class<?> hook = Class.forName(
+                    "hun.mesh.carwithenhance.hook.AutoPlayAllHook", false,
+                    AllAppCarResume.class.getClassLoader());
+            XposedHelpers.callStaticMethod(hook, "preWakeLastUsedApp");
+        } catch (Throwable throwable) {
+            XposedBridge.log(TAG + ": prewake dispatch failed: " + throwable);
         }
-        prewakePackage = pkg;
-        dispatchModuleResume(context, pkg);
     }
 
     private static void dispatchModuleResume(Context context, String pkg) {
