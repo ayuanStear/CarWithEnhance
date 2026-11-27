@@ -28,7 +28,7 @@ public final class AllAppCarResume {
     private static final String RESUME_PREFS = "carwake_all_app_resume";
     private static final String LAST_PACKAGE_KEY = "last_package";
     private static final long TRACK_INTERVAL_MS = 3000L;
-    private static final long TRACK_ARM_DELAY_MS = 15000L;
+    private static final long TRACK_ARM_DELAY_MS = 2000L;
 
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static boolean installed;
@@ -125,6 +125,15 @@ public final class AllAppCarResume {
                                     XposedBridge.log(TAG + ": native auto-play target "
                                             + requested + " -> " + selected);
                                 }
+                                if (enabled && isPackagePlaying(context, selected)) {
+                                    // The 2.6.1 pre-wake path may already have started the
+                                    // saved player. Suppress CarWith's late native auto-play
+                                    // so it cannot stop/restart that same process.
+                                    param.setResult(null);
+                                    XposedBridge.log(TAG + ": native auto-play suppressed, already playing "
+                                            + selected);
+                                    return;
+                                }
                                 if (enabled) {
                                     QishuiMediaKeyFallback.resumeIfNeeded(context, selected);
                                 }
@@ -217,6 +226,40 @@ public final class AllAppCarResume {
         } catch (Throwable throwable) {
             XposedBridge.log(TAG + ": media tracking failed: " + throwable);
         }
+    }
+
+
+    private static boolean isPackagePlaying(Context context, String packageName) {
+        if (context == null || TextUtils.isEmpty(packageName)) {
+            return false;
+        }
+        try {
+            MediaSessionManager manager = (MediaSessionManager)
+                    context.getSystemService(Context.MEDIA_SESSION_SERVICE);
+            if (manager == null) {
+                return false;
+            }
+            List<MediaController> controllers = manager.getActiveSessions(null);
+            if (controllers == null) {
+                return false;
+            }
+            for (MediaController controller : controllers) {
+                if (controller == null || !packageName.equals(controller.getPackageName())) {
+                    continue;
+                }
+                PlaybackState state = controller.getPlaybackState();
+                if (state == null) {
+                    continue;
+                }
+                int playbackState = state.getState();
+                return playbackState == PlaybackState.STATE_PLAYING
+                        || playbackState == PlaybackState.STATE_BUFFERING
+                        || playbackState == PlaybackState.STATE_CONNECTING;
+            }
+        } catch (Throwable throwable) {
+            XposedBridge.log(TAG + ": playback state check failed: " + throwable);
+        }
+        return false;
     }
 
     private static boolean isSwitchEnabled(Context context) {

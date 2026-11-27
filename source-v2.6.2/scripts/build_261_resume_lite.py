@@ -31,10 +31,10 @@ XPOSED_API = TOOLS / "xposed-api-82.jar"
 KEYSTORE = Path(os.environ.get("CARWITHX_KEYSTORE", str(KEYS / "carwithx-release.jks")))
 KEY_ALIAS = os.environ.get("CARWITHX_KEY_ALIAS", "carwithx")
 KEY_PASSWORD = os.environ.get("CARWITHX_KEY_PASSWORD", "")
-FINAL_APK = OUTPUT / "CarWithEnhance-2.6.2-qishui-carmic-tabfix-logclean.apk"
+FINAL_APK = OUTPUT / "CarWithEnhance-2.6.3-prewake-fast-resume.apk"
 PACKAGE_NAME = "hun.mesh.carwithenhance"
-VERSION_CODE = "73"
-VERSION_NAME = "2.6.2-qishui-media-key-fallback-carmic-tabfix-logclean-r3"
+VERSION_CODE = "74"
+VERSION_NAME = "2.6.3-qishui-carmic-tabfix-prewake-fast-resume"
 ANDROID_NS = "http://schemas.android.com/apk/res/android"
 A = f"{{{ANDROID_NS}}}"
 
@@ -399,29 +399,12 @@ def patch_auto_play_all(smali: Path) -> None:
 .end method'''
     text = replace_method(text, "public onHook(Ljava/lang/ClassLoader;)V", on_hook)
 
+    # Keep the 2.6.1 pre-wake/resume path alive. Only the panel-render
+    # callback is disabled because this variant resumes from MediaSession
+    # metadata and no longer registers CarWithPanelReadyHook.
     noops = [
         ("public static preWakeForCarOpen(Ljava/lang/String;Ljava/lang/String;)V",
          '''.method public static preWakeForCarOpen(Ljava/lang/String;Ljava/lang/String;)V
-    .locals 0
-
-    return-void
-.end method'''),
-        ("private static preWakeLastUsedApp()V",
-         '''.method private static preWakeLastUsedApp()V
-    .locals 0
-
-    return-void
-.end method'''),
-        ("public static prepareMediaSession(Landroid/content/Context;Ljava/lang/String;Z)Z",
-         '''.method public static prepareMediaSession(Landroid/content/Context;Ljava/lang/String;Z)Z
-    .locals 0
-
-    const/4 p0, 0x0
-
-    return p0
-.end method'''),
-        ("public static startRetryLoop(Ljava/lang/ClassLoader;Ljava/lang/String;)V",
-         '''.method public static startRetryLoop(Ljava/lang/ClassLoader;Ljava/lang/String;)V
     .locals 0
 
     return-void
@@ -482,8 +465,10 @@ def delete_removed_classes(smali: Path) -> None:
     lyric_policy = smali / "hun" / "mesh" / "carwithenhance" / "policy" / "LyricFallbackPolicy.smali"
     if lyric_policy.exists():
         lyric_policy.unlink()
-    # These inner classes were only reached from the now-disabled 2.6.1 resume path.
-    for name in ("AutoPlayAllHook$1.smali", "AutoPlayAllHook$10.smali", "AutoPlayAllHook$11.smali", "AutoPlayAllHook$24.smali"):
+    # Keep $11/$24: they are the retry scheduler and the delayed pause-key
+    # runnable used by the restored pre-wake path. $1/$10 belonged to the old
+    # native auto-play hook and panel-render callback, both intentionally gone.
+    for name in ("AutoPlayAllHook$1.smali", "AutoPlayAllHook$10.smali"):
         path = hook_dir / name
         if path.exists():
             path.unlink()
@@ -559,13 +544,13 @@ def build() -> int:
         "package": PACKAGE_NAME,
         "versionCode": int(VERSION_CODE),
         "versionName": VERSION_NAME,
-        "removed": ["LyricSourceHook", "LyricFallbackPolicy", "CarWithPanelReadyHook", "AutoPlayAllHook prewarm/retry", "custom MediaBrowser playback", "3/5/8s resume retries", "ResumeGate", "routine hook/status/audio-state log noise"],
-        "resume": "native pa.a.g target rewrite; Qishui gets one explicit stopped-package media-key fallback; CarLife VR channel requests head-unit microphone",
+        "removed": ["LyricSourceHook", "LyricFallbackPolicy", "CarWithPanelReadyHook", "ResumeGate", "routine hook/status/audio-state log noise"],
+        "resume": "restored 2.6.1 pre-wake + metadata resume; native target rewrite kept as fallback; native auto-play suppressed when the saved player is already playing; Qishui stopped-package media-key fallback; CarLife VR channel requests head-unit microphone",
         "logging": "routine hook/status/audio-state logs filtered; errors and key media/microphone events retained",
         "built_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
     }
-    (OUTPUT / "CarWithEnhance-2.6.2-qishui-carmic-tabfix-logclean.build.json").write_text(json.dumps(info, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    (OUTPUT / "CarWithEnhance-2.6.2-qishui-carmic-tabfix-logclean.SHA256SUMS.txt").write_text(
+    (OUTPUT / f"{FINAL_APK.stem}.build.json").write_text(json.dumps(info, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (OUTPUT / f"{FINAL_APK.stem}.SHA256SUMS.txt").write_text(
         f"{digest}  {FINAL_APK.name}\n", encoding="ascii"
     )
     log(f"FINAL: {FINAL_APK}")

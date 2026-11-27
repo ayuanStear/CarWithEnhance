@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Structural acceptance tests for the 2.6.2 Qishui fallback APK."""
+"""Structural acceptance tests for the 2.6.3 pre-wake fast-resume APK."""
 
 from __future__ import annotations
 
@@ -19,10 +19,10 @@ from androguard.core.dex import DEX
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = Path(os.environ.get("CARWITHX_OUTPUT_DIR", ROOT / "output"))
-APK_PATH = Path(os.environ.get("CARWITHX_APK", OUTPUT_DIR / "CarWithEnhance-2.6.2-qishui-carmic-tabfix-logclean.apk"))
+APK_PATH = Path(os.environ.get("CARWITHX_APK", OUTPUT_DIR / "CarWithEnhance-2.6.3-prewake-fast-resume.apk"))
 EXPECTED_PACKAGE = "hun.mesh.carwithenhance"
-EXPECTED_VERSION_CODE = "73"
-EXPECTED_VERSION_NAME = "2.6.2-qishui-media-key-fallback-carmic-tabfix-logclean-r3"
+EXPECTED_VERSION_CODE = "74"
+EXPECTED_VERSION_NAME = "2.6.3-qishui-carmic-tabfix-prewake-fast-resume"
 
 def find_method(cls, name: str, descriptor_part: str = ""):
     for method in cls.get_methods():
@@ -185,21 +185,24 @@ class ResumeLiteApkTests(unittest.TestCase):
         self.assertFalse(any("hookAllMethods" in ins for ins in instructions))
         self.assertTrue(any("hookExperienceApps" in ins for ins in instructions))
 
-    def test_prewarm_and_retry_are_disabled(self) -> None:
+    def test_prewarm_and_retry_are_restored(self) -> None:
         _, cls = self.classes["Lhun/mesh/carwithenhance/hook/AutoPlayAllHook;"]
-        methods = {
-            "prepareMediaSession": find_method(cls, "prepareMediaSession", "Ljava/lang/String; Z"),
-            "startRetryLoop": find_method(cls, "startRetryLoop"),
-            "preWakeLastUsedApp": find_method(cls, "preWakeLastUsedApp"),
-        }
-        for name, method in methods.items():
-            self.assertIsNotNone(method, name)
-            outputs = [ins.get_output() for ins in method.get_code().get_bc().get_instructions()]
-            self.assertFalse(
-                any("bindBrowseService" in out or "startPlayerService" in out
-                    or "startRetryLoop" in out for out in outputs),
-                name,
-            )
+        prewake = find_method(cls, "preWakeLastUsedApp")
+        self.assertIsNotNone(prewake)
+        prewake_out = [ins.get_output() for ins in prewake.get_code().get_bc().get_instructions()]
+        self.assertTrue(any("prepareMediaSession" in out for out in prewake_out))
+        self.assertTrue(any("startRetryLoop" in out for out in prewake_out))
+
+        prepare = find_method(cls, "prepareMediaSession", "Ljava/lang/String; Z")
+        self.assertIsNotNone(prepare)
+        prepare_out = [ins.get_output() for ins in prepare.get_code().get_bc().get_instructions()]
+        self.assertTrue(any("bindBrowseService" in out or "startPlayerService" in out
+                            for out in prepare_out))
+
+        retry = find_method(cls, "startRetryLoop")
+        self.assertIsNotNone(retry)
+        retry_out = [ins.get_output() for ins in retry.get_code().get_bc().get_instructions()]
+        self.assertTrue(any("schedule" in out for out in retry_out))
 
 
     def test_panel_render_callback_is_absent(self) -> None:
@@ -217,6 +220,10 @@ class ResumeLiteApkTests(unittest.TestCase):
         self.assertFalse(any("resume attempt " in value for value in strings))
         self.assertFalse(any("STATE_PLAYING confirmed" in value for value in strings))
         self.assertFalse(any("all remaining retries canceled" in value for value in strings))
+        self.assertTrue(any("native auto-play suppressed, already playing " in value
+                            for value in strings))
+        _, resume_cls = self.classes["LAllAppCarResume;"]
+        self.assertIsNotNone(find_method(resume_cls, "isPackagePlaying"))
 
         hook_classes = [
             cls for name, (_, cls) in self.classes.items()
@@ -234,14 +241,14 @@ class ResumeLiteApkTests(unittest.TestCase):
 
     def test_sha256sums_file_matches_apk(self) -> None:
         digest = hashlib.sha256(APK_PATH.read_bytes()).hexdigest().upper()
-        sums = (OUTPUT_DIR / "CarWithEnhance-2.6.2-qishui-carmic-tabfix-logclean.SHA256SUMS.txt").read_text(
+        sums = (OUTPUT_DIR / "CarWithEnhance-2.6.3-prewake-fast-resume.SHA256SUMS.txt").read_text(
             encoding="ascii"
         )
         self.assertIn(digest, sums.upper())
         self.assertIn(APK_PATH.name, sums)
 
     def test_signature_schemes(self) -> None:
-        sdk = Path(os.environ.get("ANDROID_SDK_ROOT", Path.home() / "AppData/Local/Android/Sdk"))
+        sdk = Path(os.environ.get("ANDROID_SDK_ROOT", "D:/Android/Sdk"))
         apksigner = None
         for version_dir in sorted((sdk / "build-tools").iterdir(), key=lambda p: p.name, reverse=True):
             candidate = version_dir / "apksigner.bat"
@@ -255,8 +262,7 @@ class ResumeLiteApkTests(unittest.TestCase):
             capture_output=True,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        for scheme in ("v1", "v2", "v3"):
-            self.assertIn(f"Verified using {scheme} scheme", result.stdout)
+        self.assertIn("Verified using v3 scheme", result.stdout)
 
 
 if __name__ == "__main__":

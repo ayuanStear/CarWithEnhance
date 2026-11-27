@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.6.3 - 2026-11-27
+
+- Restore the 2.6.1 pre-wake path: immediately prepare the last-used player
+  after `displayConnected` and resume from MediaSession metadata instead of
+  waiting for CarWith's native auto-play callback.
+- Arm `AllAppCarResume` tracking after 2 seconds instead of 15 seconds.
+- Suppress CarWith's late native auto-play when the saved player is already
+  playing, buffering, or connecting, avoiding the start/stop/restart cycle.
+- Keep the panel-render hook removed and retain the 2.6.2 Qishui, CarMic,
+  NetEase-tab, and log-cleanup changes.
+
 ## 2.6.2 - 2026-11-26
 
 - Reworked the resume path around CarWith's native `pa.a#g` auto-play target rewrite without custom 3/5/8-second retries.
