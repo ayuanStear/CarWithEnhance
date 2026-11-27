@@ -216,6 +216,11 @@ public final class AllAppCarResume {
                     "hun.mesh.carwithenhance.hook.AutoPlayAllHook", false,
                     AllAppCarResume.class.getClassLoader());
             XposedHelpers.callStaticMethod(hook, "preWakeLastUsedApp");
+            // Capture the target chosen by preWakeLastUsedApp for retry tracking.
+            Object chosen = XposedHelpers.callStaticMethod(hook, "readLastUsedMediaApp");
+            if (chosen instanceof String && !TextUtils.isEmpty((String) chosen)) {
+                prewakePackage = (String) chosen;
+            }
         } catch (Throwable throwable) {
             XposedBridge.log(TAG + ": prewake dispatch failed: " + throwable);
         }
@@ -231,6 +236,9 @@ public final class AllAppCarResume {
             // still be starting, and switching would kill it.
             XposedBridge.log(TAG + ": skip target switch during prewake "
                     + prewakePackage + " -> " + pkg);
+            return;
+        }
+        if (pkg == null || pkg.isEmpty()) {
             return;
         }
         dispatchingResume = true;
