@@ -1780,25 +1780,26 @@ public class AutoPlayAllHook implements IHook {
     }
 
     private static String readLastUsedMediaApp() {
-        // CarWith 的 media_dau_time 记录用户最近真正用过的音乐应用（含落雪等
-        // 不在静态白名单里的 app），比可能被图标同步改写的 xa.c.d 更贴近
-        // 用户最后一次的选择。
-        String dauLast = lastDauMusicApp();
-        if (dauLast != null && !dauLast.isEmpty()) {
-            return dauLast;
-        }
-        // CarWith 自己记录的 last-used 媒体应用反映用户最后一次选择，
-        // 比模块持久化的 PREF_LAST_MEDIA_APP 更新（后者只在真正播放时写入，
-        // 可能停在用户已手动结束的旧应用上，导致续播目标被改错）。
-        String carwithLastUsed = carwithLastUsedMediaApp();
-        if (carwithLastUsed != null && !carwithLastUsed.isEmpty()) {
-            return carwithLastUsed;
-        }
+        // PREF_LAST_MEDIA_APP is saved at disconnect time with the actual
+        // last-playing app. It is the most accurate source and must win over
+        // DAU records, which may be updated by unrelated playback events.
         String lastLaunched = null;
         Context context = sAppCtx;
         if (context != null) {
             lastLaunched = context.getSharedPreferences(PREFS, 0)
                     .getString(PREF_LAST_MEDIA_APP, null);
+        }
+        if (lastLaunched != null && !lastLaunched.isEmpty()
+                && isMediaApp(sCl, lastLaunched)) {
+            return lastLaunched;
+        }
+        String dauLast = lastDauMusicApp();
+        if (dauLast != null && !dauLast.isEmpty()) {
+            return dauLast;
+        }
+        String carwithLastUsed = carwithLastUsedMediaApp();
+        if (carwithLastUsed != null && !carwithLastUsed.isEmpty()) {
+            return carwithLastUsed;
         }
         return MediaPlaybackPolicy.chooseLastLaunched(
                 lastLaunched,
