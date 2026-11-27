@@ -143,6 +143,11 @@ public final class AllAppCarResume {
                                         && isPackageInstalled(context, saved);
                                 String selected = NativeResumePolicy.selectTarget(
                                         enabled, requested, saved, savedInstalled);
+                                if (prewakePackage != null && !prewakePackage.equals(selected)
+                                        && NativeResumePolicy.isPrewakeCurrent(
+                                        connectedSince, SystemClock.elapsedRealtime())) {
+                                    selected = prewakePackage;
+                                }
                                 if (!TextUtils.equals(selected, requested)) {
                                     param.args[0] = selected;
                                     XposedBridge.log(TAG + ": native auto-play target "
@@ -213,6 +218,14 @@ public final class AllAppCarResume {
 
     private static void dispatchModuleResume(Context context, String pkg) {
         if (dispatchingResume) {
+            return;
+        }
+        if (prewakePackage != null && !prewakePackage.equals(pkg)
+                && NativeResumePolicy.isPrewakeCurrent(connectedSince, SystemClock.elapsedRealtime())) {
+            // Do not switch targets mid-connection: the original player may
+            // still be starting, and switching would kill it.
+            XposedBridge.log(TAG + ": skip target switch during prewake "
+                    + prewakePackage + " -> " + pkg);
             return;
         }
         dispatchingResume = true;
