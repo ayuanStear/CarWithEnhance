@@ -336,6 +336,9 @@ public final class AllAppCarResume {
 
 
     private static boolean isPackagePlaying(Context context, String pkg) {
+        if (pkg == null) {
+            return false;
+        }
         try {
             MediaSessionManager manager = (MediaSessionManager)
                     context.getSystemService(Context.MEDIA_SESSION_SERVICE);
