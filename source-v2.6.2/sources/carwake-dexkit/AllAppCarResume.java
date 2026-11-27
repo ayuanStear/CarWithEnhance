@@ -214,7 +214,7 @@ public final class AllAppCarResume {
         try {
             Class<?> hook = Class.forName(
                     "hun.mesh.carwithenhance.hook.AutoPlayAllHook", false,
-                    context.getClass().getClassLoader());
+                    AllAppCarResume.class.getClassLoader());
             if (!pkg.equals(prewakePackage)) {
                 prewakePackage = pkg;
                 moduleResumeCompleted = false;

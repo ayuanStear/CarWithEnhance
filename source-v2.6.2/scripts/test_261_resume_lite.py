@@ -228,6 +228,11 @@ class ResumeLiteApkTests(unittest.TestCase):
         outputs = [ins.get_output() for ins in method.get_code().get_bc().get_instructions()]
         self.assertFalse(any("AutoPlayAllHook$10" in out for out in outputs))
         self.assertNotIn("Lhun/mesh/carwithenhance/hook/AutoPlayAllHook$10;", self.classes)
+    def test_prewake_dispatch_uses_module_classloader(self) -> None:
+        source = Path("source-v2.6.2/sources/carwake-dexkit/AllAppCarResume.java").read_text(encoding="utf-8")
+        self.assertIn("AllAppCarResume.class.getClassLoader()", source)
+        self.assertNotIn("context.getClass().getClassLoader()", source)
+
     def test_native_target_rewrite_contract(self) -> None:
         _, dex = self.classes["LAllAppCarResume;"][0], self.dexes[self.classes["LAllAppCarResume;"][0]]
         strings = set(dex.get_strings())
