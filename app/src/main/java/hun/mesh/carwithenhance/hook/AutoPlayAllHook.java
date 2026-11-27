@@ -1765,7 +1765,9 @@ public class AutoPlayAllHook implements IHook {
                 sWaitingPkg = lastUsedMediaApp;
                 if (ResumeReadinessPolicy.canSendOfficialResume(
                         autoPlayEnabled, processRunning, hasSession, targetPlaying, otherMediaPlaying)) {
-                    resumeAfterPanelIfReady(sCl, lastUsedMediaApp);
+                    if (resumeAfterPanelIfReady(sCl, lastUsedMediaApp)) {
+                        sResumedPkg = lastUsedMediaApp;
+                    }
                 } else if (processRunning && !hasSession) {
                     log(context, "播放器进程已就绪但媒体会话尚未出现，等待会话后官方续播 " + lastUsedMediaApp);
                 }
@@ -3318,6 +3320,10 @@ public class AutoPlayAllHook implements IHook {
                             return;
                         }
                         if (!targetPlaying) {
+                            if (str.equals(sResumedPkg)) {
+                                cancelRetryTasks();
+                                return;
+                            }
                             boolean processRunning = isProcessRunning(context, str);
                             boolean hasSession = hasSession(context, str);
                             long nowWait = SystemClock.elapsedRealtime();
@@ -3378,6 +3384,7 @@ public class AutoPlayAllHook implements IHook {
                             if (resumeAfterPanelIfReady(classLoader, str)) {
                                 sResumedPkg = str;
                                 log(context, "会话已就绪且面板已渲染，下发官方续播 " + str);
+                                cancelRetryTasks();
                             }
                             return;
                         }
