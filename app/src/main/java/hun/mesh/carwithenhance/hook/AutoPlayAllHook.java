@@ -1107,7 +1107,6 @@ public class AutoPlayAllHook implements IHook {
                     try {
                         Object obj = methodHookParam.args[0];
                         if (obj instanceof String) {
-                            AutoPlayAllHook.preWakeForCarOpen((String) obj, "车机端打开");
                         }
                     } catch (Throwable th2) {
                     }
@@ -1121,32 +1120,6 @@ public class AutoPlayAllHook implements IHook {
 
     /* JADX INFO: Access modifiers changed from: private */
     public static void preWakeForCarOpen(String str, String str2) {
-        if (str == null || str.length() == 0) {
-            return;
-        }
-        try {
-            Context context = sAppCtx;
-            if (context == null || !isEnabled(context) || !isMediaApp(sCl, str)) {
-                return;
-            }
-            saveLastOpenedMediaApp(context, str);
-            if (MediaPlaybackPolicy.shouldSuppressPlayback(
-                    isPlaying(context, str), playingOtherMedia(context, str))) {
-                log(context, str2 + " " + str + "，其他音乐正在播放，仅记录最后启动应用，不自动播放");
-                return;
-            }
-            if (!blockedByUserKill(context, str) && !blockedBySwitchDrop(str)
-                    && !isProcessRunning(context, str)) {
-                log(context, str2 + " " + str + "，先把它后台唤醒");
-                CAR_OPEN_AT.put(str, Long.valueOf(SystemClock.elapsedRealtime()));
-                markSessionMedia(str);
-                WOKE.add(str);
-                sActiveWokePkg = str;
-                sendMediaButton(context, str);
-                bindBrowseService(context, str);
-            }
-        } catch (Throwable th) {
-        }
     }
 
     /* JADX INFO: Access modifiers changed from: private */
