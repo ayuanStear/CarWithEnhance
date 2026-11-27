@@ -1,4 +1,3 @@
-import android.app.ActivityManager;
 import android.app.AndroidAppHelper;
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -33,6 +32,7 @@ public final class AllAppCarResume {
 
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static boolean installed;
+    private static ClassLoader hostClassLoader;
     private static boolean trackingArmed;
     private static boolean previousConnected;
     private static long connectedSince;
@@ -57,12 +57,20 @@ public final class AllAppCarResume {
                             previousConnected = true;
                             connectedSince = now;
                             lastRecordedPackage = null;
+                            resumePrewakeTarget(context, now);
                         }
                         if (!trackingArmed && now - connectedSince >= TRACK_ARM_DELAY_MS) {
                             trackingArmed = true;
                         }
                         if (trackingArmed) {
                             recordPlayingPackage(context);
+                        }
+                        if (NativeResumePolicy.shouldAllowRetry(
+                                isSwitchEnabled(context),
+                                NativeResumePolicy.isPrewakeCurrent(connectedSince, now),
+                                moduleResumeCompleted,
+                                isPackagePlaying(context, prewakePackage))) {
+                            dispatchModuleResume(context, prewakePackage);
                         }
                     }
                 } catch (Throwable throwable) {
@@ -96,6 +104,7 @@ public final class AllAppCarResume {
             return;
         }
         installed = true;
+        hostClassLoader = classLoader;
         MAIN.removeCallbacks(TRACKER);
         MAIN.post(TRACKER);
         try {
@@ -113,7 +122,20 @@ public final class AllAppCarResume {
                                 if (context == null || param.args == null || param.args.length < 1) {
                                     return;
                                 }
+                                if (!(param.args[0] instanceof String)) {
+                                    return;
+                                }
                                 String requested = (String) param.args[0];
+                                boolean autoResume = param.args.length > 1
+                                        && Boolean.TRUE.equals(param.args[1]);
+                                if (!NativeResumePolicy.shouldHandleNativeCall(
+                                        autoResume,
+                                        NativeResumePolicy.isPrewakeCurrent(
+                                                connectedSince, SystemClock.elapsedRealtime()),
+                                        moduleResumeCompleted,
+                                        TextUtils.equals(prewakePackage, requested))) {
+                                    return;
+                                }
                                 boolean enabled = isSwitchEnabled(context);
                                 String saved = enabled ? loadLastPackage(context) : null;
                                 boolean savedInstalled = enabled
@@ -126,17 +148,35 @@ public final class AllAppCarResume {
                                     XposedBridge.log(TAG + ": native auto-play target "
                                             + requested + " -> " + selected);
                                 }
-                                if (enabled && isPrewakeOwned(context, selected)) {
-                                    // The 2.6.1 pre-wake path may already have started the
-                                    // saved player. Suppress CarWith's late native auto-play
-                                    // so it cannot stop/restart that same process.
+                                boolean currentPrewake = NativeResumePolicy.isPrewakeCurrent(
+                                        connectedSince, SystemClock.elapsedRealtime());
+                                if (enabled && currentPrewake
+                                        && (moduleResumeCompleted || isPackagePlaying(context, selected))) {
+                                    if (!moduleResumeCompleted && isPackagePlaying(context, selected)) {
+                                        prewakePackage = selected;
+                                        moduleResumeCompleted = true;
+                                    }
                                     param.setResult(null);
-                                    XposedBridge.log(TAG + ": native auto-play suppressed, pre-wake owns "
-                                            + selected);
+                                    XposedBridge.log(TAG + ": native auto-play suppressed after prewake "
+                                            + selected + ", playing=" + isPackagePlaying(context, selected));
                                     return;
                                 }
                                 if (enabled) {
                                     QishuiMediaKeyFallback.resumeIfNeeded(context, selected);
+                                }
+                                if (enabled && autoResume
+                                        && TextUtils.equals(selected, prewakePackage)
+                                        && !moduleResumeCompleted) {
+                                    prewakePackage = null;
+                                }
+                                if (enabled && autoResume && !moduleResumeCompleted
+                                        && !QishuiMediaKeyFallbackPolicy.shouldDispatch(
+                                                selected, hasActiveSession(context, selected))) {
+                                    // CarWith can also resume a process which was already
+                                    // alive before the module woke it, or which has a stale
+                                    // session with no metadata yet.
+                                    param.setResult(null);
+                                    dispatchModuleResume(context, selected);
                                 }
                             } catch (Throwable throwable) {
                                 XposedBridge.log(TAG + ": target rewrite failed: " + throwable);
@@ -148,6 +188,70 @@ public final class AllAppCarResume {
             XposedBridge.log(TAG + ": install failed: " + throwable);
             XposedBridge.log(throwable);
         }
+    }
+
+    private static String prewakePackage;
+    private static boolean moduleResumeCompleted;
+
+    private static void resumePrewakeTarget(Context context, long now) {
+        prewakePackage = null;
+        moduleResumeCompleted = false;
+        if (hostClassLoader == null || !isSwitchEnabled(context)) {
+            return;
+        }
+        if (!NativeResumePolicy.isPrewakeCurrent(connectedSince, now)) {
+            return;
+        }
+        String pkg = loadLastPackage(context);
+        if (TextUtils.isEmpty(pkg) || !isPackageInstalled(context, pkg)) {
+            return;
+        }
+        prewakePackage = pkg;
+        dispatchModuleResume(context, pkg);
+    }
+
+    private static void dispatchModuleResume(Context context, String pkg) {
+        try {
+            Class<?> hook = Class.forName(
+                    "hun.mesh.carwithenhance.hook.AutoPlayAllHook", false,
+                    context.getClass().getClassLoader());
+            if (!pkg.equals(prewakePackage)) {
+                prewakePackage = pkg;
+                moduleResumeCompleted = false;
+            }
+            boolean running = (Boolean) XposedHelpers.callStaticMethod(
+                    hook, "isProcessRunning", context, pkg);
+            Object result = XposedHelpers.callStaticMethod(
+                    hook, "resumePrewakeForCarConnected", hostClassLoader, pkg);
+            moduleResumeCompleted = Boolean.TRUE.equals(result);
+            XposedBridge.log(TAG + ": prewake resume " + pkg
+                    + ", running=" + running + ", completed=" + moduleResumeCompleted);
+        } catch (Throwable throwable) {
+            XposedBridge.log(TAG + ": prewake resume failed: " + throwable);
+        }
+    }
+
+    private static boolean hasActiveSession(Context context, String pkg) {
+        try {
+            MediaSessionManager manager = (MediaSessionManager)
+                    context.getSystemService(Context.MEDIA_SESSION_SERVICE);
+            if (manager == null) {
+                return false;
+            }
+            List<MediaController> controllers = manager.getActiveSessions(null);
+            if (controllers == null) {
+                return false;
+            }
+            for (MediaController controller : controllers) {
+                if (controller != null && pkg != null
+                        && pkg.equals(controller.getPackageName())) {
+                    return true;
+                }
+            }
+        } catch (Throwable throwable) {
+            XposedBridge.log(TAG + ": active-session check failed: " + throwable);
+        }
+        return false;
     }
 
     private static String[] resolveAutoPlayTarget(ClassLoader hostClassLoader) {
@@ -231,48 +335,7 @@ public final class AllAppCarResume {
 
 
 
-    private static boolean isPrewakeOwned(Context context, String packageName) {
-        if (connectedSince <= 0L
-                || SystemClock.elapsedRealtime() - connectedSince > 20000L) {
-            return false;
-        }
-        return isPackagePlaying(context, packageName) || isPackageRunning(context, packageName);
-    }
-
-    private static boolean isPackageRunning(Context context, String packageName) {
-        if (context == null || TextUtils.isEmpty(packageName)) {
-            return false;
-        }
-        try {
-            ActivityManager manager = (ActivityManager)
-                    context.getSystemService(Context.ACTIVITY_SERVICE);
-            if (manager == null) {
-                return false;
-            }
-            List<ActivityManager.RunningAppProcessInfo> processes = manager.getRunningAppProcesses();
-            if (processes == null) {
-                return false;
-            }
-            String prefix = packageName + ":";
-            for (ActivityManager.RunningAppProcessInfo process : processes) {
-                if (process == null || process.processName == null) {
-                    continue;
-                }
-                if (process.processName.equals(packageName)
-                        || process.processName.startsWith(prefix)) {
-                    return true;
-                }
-            }
-        } catch (Throwable throwable) {
-            XposedBridge.log(TAG + ": process check failed: " + throwable);
-        }
-        return false;
-    }
-
-    private static boolean isPackagePlaying(Context context, String packageName) {
-        if (context == null || TextUtils.isEmpty(packageName)) {
-            return false;
-        }
+    private static boolean isPackagePlaying(Context context, String pkg) {
         try {
             MediaSessionManager manager = (MediaSessionManager)
                     context.getSystemService(Context.MEDIA_SESSION_SERVICE);
@@ -284,17 +347,17 @@ public final class AllAppCarResume {
                 return false;
             }
             for (MediaController controller : controllers) {
-                if (controller == null || !packageName.equals(controller.getPackageName())) {
+                if (controller == null || !pkg.equals(controller.getPackageName())) {
                     continue;
                 }
                 PlaybackState state = controller.getPlaybackState();
                 if (state == null) {
                     continue;
                 }
-                int playbackState = state.getState();
-                return playbackState == PlaybackState.STATE_PLAYING
-                        || playbackState == PlaybackState.STATE_BUFFERING
-                        || playbackState == PlaybackState.STATE_CONNECTING;
+                int value = state.getState();
+                return value == PlaybackState.STATE_PLAYING
+                        || value == PlaybackState.STATE_BUFFERING
+                        || value == PlaybackState.STATE_CONNECTING;
             }
         } catch (Throwable throwable) {
             XposedBridge.log(TAG + ": playback state check failed: " + throwable);

@@ -185,13 +185,29 @@ class ResumeLiteApkTests(unittest.TestCase):
         self.assertFalse(any("hookAllMethods" in ins for ins in instructions))
         self.assertTrue(any("hookExperienceApps" in ins for ins in instructions))
 
+    def test_connection_prewake_entry_and_playback_only_suppression(self) -> None:
+        _, cls = self.classes["Lhun/mesh/carwithenhance/hook/AutoPlayAllHook;"]
+        entry = find_method(cls, "resumePrewakeForCarConnected")
+        self.assertIsNotNone(entry, "missing connection prewake entry")
+        self.assertTrue(any("isPlaying" in ins.get_output()
+                            for ins in entry.get_code().get_bc().get_instructions()))
+        out = [ins.get_output() for ins in entry.get_code().get_bc().get_instructions()]
+        self.assertTrue(any("prepareMediaSession" in x for x in out))
+        self.assertTrue(any("resumeAfterPanelIfReady" in x for x in out))
+        self.assertTrue(any("startRetryLoop" in x for x in out))
+
+        _, helper_cls = self.classes["LAllAppCarResume;"]
+        self.assertIsNotNone(find_method(helper_cls, "resumePrewakeTarget"))
+        self.assertIsNotNone(find_method(helper_cls, "isPackagePlaying"))
+        self.assertIsNone(find_method(helper_cls, "isPrewakeOwned"))
+        self.assertIsNone(find_method(helper_cls, "isPackageRunning"))
+
     def test_prewarm_and_retry_are_restored(self) -> None:
         _, cls = self.classes["Lhun/mesh/carwithenhance/hook/AutoPlayAllHook;"]
         prewake = find_method(cls, "preWakeLastUsedApp")
         self.assertIsNotNone(prewake)
         prewake_out = [ins.get_output() for ins in prewake.get_code().get_bc().get_instructions()]
-        self.assertTrue(any("prepareMediaSession" in out for out in prewake_out))
-        self.assertTrue(any("startRetryLoop" in out for out in prewake_out))
+        self.assertTrue(any("resumePrewakeForCarConnected" in out for out in prewake_out))
 
         prepare = find_method(cls, "prepareMediaSession", "Ljava/lang/String; Z")
         self.assertIsNotNone(prepare)
@@ -220,12 +236,13 @@ class ResumeLiteApkTests(unittest.TestCase):
         self.assertFalse(any("resume attempt " in value for value in strings))
         self.assertFalse(any("STATE_PLAYING confirmed" in value for value in strings))
         self.assertFalse(any("all remaining retries canceled" in value for value in strings))
-        self.assertTrue(any("native auto-play suppressed, pre-wake owns " in value
+        self.assertTrue(any("native auto-play suppressed after prewake " in value
                             for value in strings))
         _, resume_cls = self.classes["LAllAppCarResume;"]
         self.assertIsNotNone(find_method(resume_cls, "isPackagePlaying"))
-        self.assertIsNotNone(find_method(resume_cls, "isPackageRunning"))
-        self.assertIsNotNone(find_method(resume_cls, "isPrewakeOwned"))
+        self.assertIsNone(find_method(resume_cls, "isPackageRunning"))
+        self.assertIsNone(find_method(resume_cls, "isPrewakeOwned"))
+        self.assertIsNotNone(find_method(self.classes["LNativeResumePolicy;"][1], "isPrewakeCurrent"))
 
         hook_classes = [
             cls for name, (_, cls) in self.classes.items()

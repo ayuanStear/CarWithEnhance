@@ -14,6 +14,11 @@
 - Stop the resume retry loop after the first successful resume; r1 could
   repeat "会话已就绪且面板已渲染，下发官方续播" every 1-3 seconds and make the
   CarWith UI/input feel stuck.
+- Resume the last-used player directly when CarWith connects, including a
+  process that was already alive with a paused session. Suppress only duplicate
+  native playback for a current, completed/playing prewake; failed prewake keeps
+  the native fallback. Limit delayed callbacks and retries to the 30-second
+  connection window.
 
 ## 2.6.2 - 2026-11-26
 

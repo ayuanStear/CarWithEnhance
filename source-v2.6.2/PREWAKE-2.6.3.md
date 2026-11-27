@@ -38,7 +38,7 @@ python source-v2.6.2\scripts\build_261_resume_lite.py
 python source-v2.6.2\scripts\test_261_resume_lite.py -v
 ```
 
-Output: `source-v2.6.2/output/CarWithEnhance-2.6.3-prewake-fast-resume.apk`
+Output: `source-v2.6.2/output/CarWithEnhance-2.6.3-prewake-fast-resume-r2.apk`
 
 ## Expected behavior
 
