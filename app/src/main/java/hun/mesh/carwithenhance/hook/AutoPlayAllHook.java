@@ -1724,8 +1724,50 @@ public class AutoPlayAllHook implements IHook {
         }
     }
 
+    /**
+     * Resume the last-used player as soon as CarWith reports the connection.
+     * A live process/session is played directly; a cold player is prepared and
+     * the existing retry loop waits for its MediaSession metadata.
+     */
+    public static boolean resumePrewakeForCarConnected(ClassLoader classLoader, String pkg) {
+        if (classLoader == null || pkg == null || pkg.isEmpty() || sAppCtx == null) {
+            return false;
+        }
+        sCl = classLoader;
+        if (!isEnabled(sAppCtx) || sSuppressAutoResumeForConnection
+                || !isMediaApp(classLoader, pkg) || isNeverKill(pkg)
+                || playingOtherMedia(sAppCtx, pkg)) {
+            return false;
+        }
+        if (isPlaying(sAppCtx, pkg)) {
+            sResumedPkg = pkg;
+            cancelRetryTasks();
+            return true;
+        }
+        try {
+            boolean running = isProcessRunning(sAppCtx, pkg);
+            boolean session = hasSession(sAppCtx, pkg);
+            if (!session) {
+                prepareMediaSession(sAppCtx, pkg);
+            }
+            sWaitingPkg = pkg;
+            PANEL_WAIT_STARTED.putIfAbsent(pkg, SystemClock.elapsedRealtime());
+            startRetryLoop(classLoader, pkg);
+            if (running && session && resumeAfterPanelIfReady(classLoader, pkg)) {
+                sResumedPkg = pkg;
+                cancelRetryTasks();
+                return true;
+            }
+            log(sAppCtx, "连接后立即唤醒上次播放器: " + pkg
+                    + " (进程=" + running + ", 会话=" + session + ")");
+            return false;
+        } catch (Throwable th) {
+            logErr(sAppCtx, "连接后立即唤醒失败: " + pkg, th);
+            return false;
+        }
+    }
+
     private static void preWakeLastUsedApp() {
-        String lastUsedMediaApp;
         if (sInitialResumeDone) {
             return;
         }
@@ -1733,48 +1775,7 @@ public class AutoPlayAllHook implements IHook {
         if (sSuppressAutoResumeForConnection) {
             return;
         }
-        try {
-            Context context = sAppCtx;
-            if (context != null && isEnabled(context) && (lastUsedMediaApp = readLastUsedMediaApp()) != null && lastUsedMediaApp.length() != 0 && isMediaApp(sCl, lastUsedMediaApp) && !isNeverKill(lastUsedMediaApp)) {
-                boolean otherMediaPlaying = playingOtherMedia(context, lastUsedMediaApp);
-                if (otherMediaPlaying) {
-                    log(context, "连接时其他音乐正在播放，暂不自动续播 " + lastUsedMediaApp);
-                    return;
-                }
-                boolean autoPlayEnabled = readPrefAutoPlay();
-                boolean processRunning = isProcessRunning(context, lastUsedMediaApp);
-                boolean hasSession = hasSession(context, lastUsedMediaApp);
-                boolean targetPlaying = isPlaying(context, lastUsedMediaApp);
-                log(context, "本次连接待续播: " + lastUsedMediaApp + " (CarWith自带续播开关=" + autoPlayEnabled + ")");
-                learnCurrentMedia(lastUsedMediaApp);
-                if (!processRunning && isMediaApp(sCl, lastUsedMediaApp)) {
-                    log(context, "连接即静默准备上次使用的播放器: " + lastUsedMediaApp);
-                    CAR_OPEN_AT.put(lastUsedMediaApp, Long.valueOf(SystemClock.elapsedRealtime()));
-                    markSessionMedia(lastUsedMediaApp);
-                    WOKE.add(lastUsedMediaApp);
-                    sActiveWokePkg = lastUsedMediaApp;
-                    PANEL_WAIT_STARTED.put(lastUsedMediaApp, SystemClock.elapsedRealtime());
-                    sWaitingPkg = lastUsedMediaApp;
-                    if (!autoPlayEnabled || !isCarwithMediaApp(sCl, lastUsedMediaApp)) {
-                        prepareMediaSession(context, lastUsedMediaApp);
-                    }
-                    startRetryLoop(sCl, lastUsedMediaApp);
-                    return;
-                }
-                PANEL_WAIT_STARTED.put(lastUsedMediaApp, SystemClock.elapsedRealtime());
-                sWaitingPkg = lastUsedMediaApp;
-                if (ResumeReadinessPolicy.canSendOfficialResume(
-                        autoPlayEnabled, processRunning, hasSession, targetPlaying, otherMediaPlaying)) {
-                    if (resumeAfterPanelIfReady(sCl, lastUsedMediaApp)) {
-                        sResumedPkg = lastUsedMediaApp;
-                    }
-                } else if (processRunning && !hasSession) {
-                    log(context, "播放器进程已就绪但媒体会话尚未出现，等待会话后官方续播 " + lastUsedMediaApp);
-                }
-                startRetryLoop(sCl, lastUsedMediaApp);
-            }
-        } catch (Throwable th) {
-        }
+        resumePrewakeForCarConnected(sCl, readLastUsedMediaApp());
     }
 
     private static String readLastUsedMediaApp() {
