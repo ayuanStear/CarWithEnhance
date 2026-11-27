@@ -1754,8 +1754,9 @@ public class AutoPlayAllHook implements IHook {
             PANEL_WAIT_STARTED.putIfAbsent(pkg, SystemClock.elapsedRealtime());
             startRetryLoop(classLoader, pkg);
             boolean resumed = resumeAfterPanelIfReady(classLoader, pkg);
-            if (!resumed && running && session) {
-                // Session exists but resume command failed: send PLAY key.
+            if (!isPlaying(sAppCtx, pkg)) {
+                // CarWith resume command may not start a paused player.
+                // Always send PLAY key when not actually playing.
                 sendMediaButton(sAppCtx, pkg);
             }
             if (resumed || (running && session && isPlaying(sAppCtx, pkg))) {
